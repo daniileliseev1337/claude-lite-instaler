@@ -1,0 +1,22 @@
+# PowerShell / Windows
+*.ps1.bak
+*.swp
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.sublime-workspace
+
+# Локальные тесты
+_test/
+_sandbox/
+
+# Чужие credentials которые вдруг здесь оказались
+*.credentials*
+*.env
+*.env.*
+
+# Claude Code project artifacts (если случайно открыл installer в Claude Code)
+.claude/settings.local.json

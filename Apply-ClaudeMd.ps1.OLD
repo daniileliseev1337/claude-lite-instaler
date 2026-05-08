@@ -1,0 +1,104 @@
+<#
+.SYNOPSIS
+Idempotent install/update of ~/.claude/CLAUDE.md with CORE / USER-EXTENSIONS markers.
+
+.DESCRIPTION
+Reads payload/CLAUDE.md (the new CORE block including markers) and applies
+it to ~/.claude/CLAUDE.md according to these rules:
+
+CASE A — target file does not exist:
+  → write payload/CLAUDE.md as-is.
+
+CASE B — target file exists AND has both
+         <!-- BEGIN CORE -->  and  <!-- END CORE -->  markers:
+  → replace ONLY the CORE block; everything outside (header text and
+    USER-EXTENSIONS section) is preserved.
+
+CASE C — target file exists but has NO CORE markers (legacy / handcrafted):
+  → make a backup "CLAUDE.md.bak.<timestamp>" next to it, write the new
+    payload/CLAUDE.md, AND copy old content into the new USER EXTENSIONS
+    section so the user does not lose their rules.
+
+The script is idempotent — running it twice produces the same end state
+as running it once.
+#>
+
+$ErrorActionPreference = "Stop"
+$here = $PSScriptRoot
+
+$payload = Join-Path $here "payload\CLAUDE.md"
+$claudeDir = Join-Path $env:USERPROFILE ".claude"
+$target = Join-Path $claudeDir "CLAUDE.md"
+
+if (-not (Test-Path $payload)) {
+    Write-Host "Payload missing: $payload" -ForegroundColor Red
+    exit 1
+}
+
+New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null
+
+$payloadContent = Get-Content $payload -Raw -Encoding UTF8
+
+# === CASE A: target does not exist ===================================
+if (-not (Test-Path $target)) {
+    Set-Content -Path $target -Value $payloadContent -Encoding UTF8 -NoNewline
+    Write-Host "CLAUDE.md created: $target" -ForegroundColor Green
+    Write-Host "  Edit USER EXTENSIONS section for your own rules." -ForegroundColor Gray
+    return
+}
+
+$existing = Get-Content $target -Raw -Encoding UTF8
+
+$beginCore = "<!-- BEGIN CORE"
+$endCore   = "<!-- END CORE -->"
+
+# === CASE B: target has CORE markers — replace CORE only =============
+if ($existing -match [regex]::Escape($beginCore) -and $existing -match [regex]::Escape($endCore)) {
+
+    # Extract new CORE block from payload (between markers, inclusive)
+    $beginPattern = '<!-- BEGIN CORE[^>]*-->'
+    $endPattern   = '<!-- END CORE -->'
+
+    $payloadCoreMatch = [regex]::Match($payloadContent, "$beginPattern.*?$endPattern", 'Singleline')
+    if (-not $payloadCoreMatch.Success) {
+        Write-Host "Payload has no CORE block. Aborting." -ForegroundColor Red
+        exit 1
+    }
+    $newCore = $payloadCoreMatch.Value
+
+    # Replace the CORE block in existing file
+    $updated = [regex]::Replace($existing, "$beginPattern.*?$endPattern", { param($m) $newCore }, 'Singleline')
+
+    Set-Content -Path $target -Value $updated -Encoding UTF8 -NoNewline
+    Write-Host "CLAUDE.md updated (CORE block replaced): $target" -ForegroundColor Green
+    Write-Host "  USER EXTENSIONS section preserved." -ForegroundColor Gray
+    return
+}
+
+# === CASE C: target exists but no CORE markers — backup + merge ======
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$backup = "$target.bak.$timestamp"
+Copy-Item -Path $target -Destination $backup
+Write-Host "Backup of existing CLAUDE.md: $backup" -ForegroundColor Yellow
+
+# Insert old content into USER EXTENSIONS section of new payload
+$oldHeader = "<!-- =============================="
+$insertedUserExt = @"
+<!-- BEGIN USER EXTENSIONS — добавляйте свои правила ниже; lite-installer не трогает эту секцию -->
+
+<!-- The following rules came from the previous CLAUDE.md (auto-merged on $timestamp). Review and tidy as needed. -->
+
+$existing
+
+<!-- END USER EXTENSIONS -->
+"@
+
+$merged = [regex]::Replace(
+    $payloadContent,
+    '<!-- BEGIN USER EXTENSIONS.*?<!-- END USER EXTENSIONS -->',
+    { param($m) $insertedUserExt },
+    'Singleline')
+
+Set-Content -Path $target -Value $merged -Encoding UTF8 -NoNewline
+Write-Host "CLAUDE.md installed with merged old content in USER EXTENSIONS." -ForegroundColor Green
+Write-Host "  Open $target and review the merge result." -ForegroundColor Yellow
