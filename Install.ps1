@@ -112,7 +112,7 @@ Run-Stage `
 
 Run-Stage `
     -Title       "Stage 7/7: claude-base sync" `
-    -Description "Делает ~/.claude/ git-рабочей-копией claude-base (CLAUDE.md, agents, skills, memory, sessions, harvested). При существующей не-git ~/.claude/ — миграция с backup и сохранением credentials/history/plugins/projects." `
+    -Description "Makes ~/.claude/ a git working copy of claude-base (CLAUDE.md, agents, skills, memory, sessions, harvested). For existing non-git ~/.claude/ -- migration with backup, preserving credentials/history/plugins/projects." `
     -Question    "Sync ~/.claude/ with claude-base?" `
     -Script      "Apply-ClaudeMd.ps1" `
     -Args        @(if ($Yes) { '-Yes' } else { @() })
@@ -127,7 +127,7 @@ Write-Host "  2. Run 'claude auth login' (browser flow) to log in." -ForegroundC
 Write-Host "  3. Restart Claude Code session to load MCP servers, skills, CLAUDE.md." -ForegroundColor White
 Write-Host "  4. Verify with 'claude mcp list' (should show 8 servers)." -ForegroundColor White
 Write-Host "  5. Open ~/.claude/CLAUDE.md and add personal rules in USER EXTENSIONS section." -ForegroundColor White
-Write-Host "  6. Future updates: re-run этот installer (он делает git pull)." -ForegroundColor White
+Write-Host "  6. Future updates: re-run this installer (it does a git pull)." -ForegroundColor White
 Write-Host ""
 Write-Host "Each new terminal needs proxy re-set:" -ForegroundColor White
 Write-Host "  & '$here\Set-Proxy.ps1'" -ForegroundColor Gray
