@@ -181,14 +181,22 @@ Remove-Item -Path $ClaudeDir -Recurse -Force
 
 # Step 4: clone claude-base
 Write-Step "Cloning claude-base..."
-git clone $BaseRepo $ClaudeDir
+git clone $BaseRepo "$ClaudeDir"
 if ($LASTEXITCODE -ne 0) {
     Write-Err "git clone failed. Restoring from backup..."
-    Move-Item -Path $backupDir -Destination $ClaudeDir
-    foreach ($item in (Get-ChildItem $preserveDir -ErrorAction SilentlyContinue)) {
-        Move-Item -Path $item.FullName -Destination (Join-Path $ClaudeDir $item.Name) -Force
+    # The backup is a FULL copy of the original ~/.claude/ taken BEFORE
+    # preserve items were moved out. So backup already contains them.
+    # Just move the backup back -- DO NOT re-apply preserved items
+    # (would conflict because they are already in the restored backup).
+    if (Test-Path $ClaudeDir) {
+        # Partial state from failed clone -- remove before restoring
+        Remove-Item -Path $ClaudeDir -Recurse -Force -ErrorAction SilentlyContinue
     }
+    Move-Item -Path $backupDir -Destination $ClaudeDir
     Remove-Item $preserveDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Warn "Restored from backup. Original ~/.claude/ is back in place."
+    Write-Warn "Common cause: corporate proxy. Run Set-Proxy.ps1 first, or"
+    Write-Warn "configure git global proxy: git config --global http.proxy ..."
     exit 1
 }
 Write-OK "claude-base cloned"
