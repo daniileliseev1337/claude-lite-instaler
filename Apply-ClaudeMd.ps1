@@ -75,7 +75,9 @@ if (-not $gitCmd) {
 # === CASE 1: fresh install ===
 if (-not (Test-Path $ClaudeDir)) {
     Write-Step "~/.claude/ does not exist -- cloning claude-base..."
-    git clone $BaseRepo $ClaudeDir
+    # Bypass HTTP_PROXY for git only: corp proxies often block CONNECT
+    # while allowing HTTPS GET. Parent process keeps proxy for other tools.
+    git -c http.proxy="" -c https.proxy="" clone $BaseRepo $ClaudeDir
     if ($LASTEXITCODE -ne 0) {
         Write-Err "git clone failed. Check network/proxy."
         exit 1
@@ -119,11 +121,20 @@ if (Test-Path $GitDir) {
 
         # === CASE 2: correct remote -- pull ===
         Write-Step "Remote matches claude-base. Pulling..."
-        git pull --rebase --autostash
+        # Bypass HTTP_PROXY for git only (see CASE 1 comment).
+        $pullOutput = & git -c http.proxy="" -c https.proxy="" pull --rebase --autostash 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) {
-            Write-Err "git pull failed."
-            Write-Err "Likely a conflict in the USER EXTENSIONS section of CLAUDE.md."
-            Write-Err "Open $ClaudeDir, resolve manually, then run 'git rebase --continue'."
+            Write-Err "git pull failed (exit=$LASTEXITCODE). git output:"
+            Write-Host $pullOutput -ForegroundColor DarkGray
+            if ($pullOutput -match 'Proxy CONNECT aborted|Could not resolve host|Failed to connect|unable to access') {
+                Write-Err "Network/proxy error -- NOT a merge conflict."
+                Write-Err "Check network access to GitHub or proxy configuration."
+            } elseif ($pullOutput -match 'CONFLICT|merge conflict|could not apply') {
+                Write-Err "Merge conflict (likely in the USER EXTENSIONS section of CLAUDE.md)."
+                Write-Err "Open $ClaudeDir, resolve manually, then run 'git rebase --continue'."
+            } else {
+                Write-Err "See git output above. Resolve manually in $ClaudeDir."
+            }
             exit 1
         }
         Write-OK "~/.claude/ updated from claude-base"
@@ -181,7 +192,8 @@ Remove-Item -Path $ClaudeDir -Recurse -Force
 
 # Step 4: clone claude-base
 Write-Step "Cloning claude-base..."
-git clone $BaseRepo "$ClaudeDir"
+# Bypass HTTP_PROXY for git only (see CASE 1 comment).
+git -c http.proxy="" -c https.proxy="" clone $BaseRepo "$ClaudeDir"
 if ($LASTEXITCODE -ne 0) {
     Write-Err "git clone failed. Restoring from backup..."
     # The backup is a FULL copy of the original ~/.claude/ taken BEFORE
