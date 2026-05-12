@@ -236,7 +236,10 @@ foreach ($item in $sortedItems) {
     }
 }
 
-# 3. Clean up empty directories left behind by file removals
+# 3. Clean up empty directories left behind by file removals.
+# Use -split (regex operator) for splitting on either path separator --
+# .Split('\','/') would be parsed as Split(char, int) in PowerShell 5.1
+# and try to cast '/' to int.
 $pass = 0
 do {
     $emptied = $false
@@ -244,7 +247,8 @@ do {
     Get-ChildItem $ClaudeDir -Recurse -Directory -Force -ErrorAction SilentlyContinue |
         Where-Object { -not (Get-ChildItem $_.FullName -Force -ErrorAction SilentlyContinue) } |
         ForEach-Object {
-            $rootSegment = $_.FullName.Substring($ClaudeDir.Length).TrimStart('\','/').Split('\','/')[0]
+            $relPath = $_.FullName.Substring($ClaudeDir.Length).TrimStart([char[]]@('\','/'))
+            $rootSegment = ($relPath -split '[\\/]')[0]
             if ($PreservedItems -notcontains $rootSegment) {
                 Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
                 $emptied = $true
