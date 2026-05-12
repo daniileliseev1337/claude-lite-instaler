@@ -122,19 +122,18 @@ if (Test-Path $GitDir) {
         # === CASE 2: correct remote -- pull ===
         Write-Step "Remote matches claude-base. Pulling..."
         # Bypass HTTP_PROXY for git only (see CASE 1 comment).
-        $pullOutput = & git -c http.proxy="" -c https.proxy="" pull --rebase --autostash 2>&1 | Out-String
+        # NO 2>&1 redirect: in Windows PowerShell 5.1 it wraps native
+        # stderr in NativeCommandError/RemoteException, which under
+        # $ErrorActionPreference='Stop' aborts the script even on git's
+        # successful exit. Let git's output flow to console naturally;
+        # rely on $LASTEXITCODE for success/failure decision.
+        & git -c http.proxy="" -c https.proxy="" pull --rebase --autostash
         if ($LASTEXITCODE -ne 0) {
-            Write-Err "git pull failed (exit=$LASTEXITCODE). git output:"
-            Write-Host $pullOutput -ForegroundColor DarkGray
-            if ($pullOutput -match 'Proxy CONNECT aborted|Could not resolve host|Failed to connect|unable to access') {
-                Write-Err "Network/proxy error -- NOT a merge conflict."
-                Write-Err "Check network access to GitHub or proxy configuration."
-            } elseif ($pullOutput -match 'CONFLICT|merge conflict|could not apply') {
-                Write-Err "Merge conflict (likely in the USER EXTENSIONS section of CLAUDE.md)."
-                Write-Err "Open $ClaudeDir, resolve manually, then run 'git rebase --continue'."
-            } else {
-                Write-Err "See git output above. Resolve manually in $ClaudeDir."
-            }
+            Write-Err "git pull failed (exit=$LASTEXITCODE). See git output above."
+            Write-Err "Possible causes:"
+            Write-Err "  - Network/proxy: 'Proxy CONNECT aborted', 'Could not resolve host'"
+            Write-Err "  - Merge conflict in CLAUDE.md USER EXTENSIONS section"
+            Write-Err "    -> open $ClaudeDir, resolve manually, then 'git rebase --continue'"
             exit 1
         }
         Write-OK "~/.claude/ updated from claude-base"
