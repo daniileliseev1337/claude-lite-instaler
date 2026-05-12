@@ -13,11 +13,13 @@ Removes the exact set of files that came from the claude-base git repo:
 Preserves -- never touched:
   - .credentials.json     (Anthropic login)
   - settings.local.json   (local permissions/env vars)
-  - history.jsonl         (Claude Code session history)
+  - history.jsonl         (CLI command history)
   - file-history/         (file edit history)
   - backups/, cache/, downloads/
   - plugins/              (Claude Code plugins)
-  - projects/             (auto-memory per project)
+  - projects/             (auto-memory AND chat sessions -- the actual
+                           .jsonl transcripts live in projects/<encoded-
+                           cwd>/<uuid>.jsonl, scoped per working dir)
   - anything else NOT in claude-base HEAD (conservative -- prefer leaving
     a stranger over deleting something important)
 
@@ -187,7 +189,20 @@ if ($itemsToRemove.Count -gt 30) {
 Write-Host ""
 Write-Host "  Will PRESERVE (personal):" -ForegroundColor Green
 if ($presentPreserved) {
-    foreach ($i in $presentPreserved) { Write-Host "    - $i" }
+    foreach ($i in $presentPreserved) {
+        Write-Host "    - $i"
+        # Special: count chat .jsonl files in projects/ so the user sees
+        # explicitly that chat history is NOT deleted.
+        if ($i -eq 'projects') {
+            $projDir = Join-Path $ClaudeDir 'projects'
+            $jsonls = Get-ChildItem $projDir -Recurse -File -Force -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Extension -eq '.jsonl' }
+            if ($jsonls) {
+                $totalMb = [math]::Round(($jsonls | Measure-Object Length -Sum).Sum / 1MB, 1)
+                Write-Host "        contains $($jsonls.Count) chat session(s), ~${totalMb} MB -- NOT deleted" -ForegroundColor Green
+            }
+        }
+    }
 } else {
     Write-Host "    (none of the preserved items are present)" -ForegroundColor Gray
 }
@@ -278,4 +293,14 @@ Write-Host "     Apply-ClaudeMd CASE 4 will preserve the files left here." -Fore
 Write-Host "  2. If something is wrong, restore from backup:" -ForegroundColor White
 Write-Host "       Remove-Item ${ClaudeDir} -Recurse -Force" -ForegroundColor Gray
 Write-Host "       Move-Item ${backupDir} ${ClaudeDir}" -ForegroundColor Gray
+Write-Host ""
+Write-Host "Notes about chat history after re-install:" -ForegroundColor Cyan
+Write-Host "  - Chats live in projects/<encoded-cwd>/<uuid>.jsonl. They are" -ForegroundColor Gray
+Write-Host "    preserved here AND in the backup, never deleted by Uninstall." -ForegroundColor Gray
+Write-Host "  - Claude Code UI shows chats scoped by the cwd you open --" -ForegroundColor Gray
+Write-Host "    if you open VS Code in a different folder, that folder's" -ForegroundColor Gray
+Write-Host "    chats show up. This is by design, not lost history." -ForegroundColor Gray
+Write-Host "  - After a fresh Install you may need to run 'claude /login'" -ForegroundColor Gray
+Write-Host "    once -- credentials.json is preserved, but the auth token" -ForegroundColor Gray
+Write-Host "    inside it may have expired during the migration window." -ForegroundColor Gray
 Write-Host ""
