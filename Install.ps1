@@ -15,6 +15,9 @@ Step-by-step orchestrator. Asks before each stage:
   6. MCP servers     8 user-scope servers via 'claude mcp add'.
   7. claude-base sync ~/.claude/ становится git-рабочей-копией claude-base
                      (CLAUDE.md, agents, skills, memory, sessions, harvested).
+  8. Setup extras    Python 3.12 + 7 Python pkgs (matplotlib, ezdxf, paddleocr...)
+                     + autocad-mcp (GitHub clone + uv sync + claude mcp add)
+                     по ~/.claude/mcp-manifest.json. Идемпотентно.
 
 Что этот установщик НЕ делает:
   - не клонирует другие репозитории, не настраивает push в чужие remote
@@ -75,59 +78,98 @@ Write-Host "=== Lite installer for Claude Code workstation ===" -ForegroundColor
 Write-Host "No admin rights required. Stages are skippable." -ForegroundColor Gray
 
 Run-Stage `
-    -Title       "Stage 1/7: Proxy" `
+    -Title       "Stage 1/8: Proxy" `
     -Description "Required if you are behind a corporate Basic-auth proxy." `
     -Question    "Set HTTP proxy for the current session?" `
     -Script      "Set-Proxy.ps1"
 
 Run-Stage `
-    -Title       "Stage 2/7: VS Code (User installer)" `
+    -Title       "Stage 2/8: VS Code (User installer)" `
     -Description "Installs VS Code into %LOCALAPPDATA%\Programs\, no admin." `
     -Question    "Install VS Code?" `
     -Script      "Install-VSCode.ps1"
 
 Run-Stage `
-    -Title       "Stage 3/7: Claude Code CLI" `
+    -Title       "Stage 3/8: Claude Code CLI" `
     -Description "Official Anthropic installer. Standalone ~250 MB binary." `
     -Question    "Install Claude Code CLI?" `
     -Script      "Install-ClaudeCode.ps1"
 
 Run-Stage `
-    -Title       "Stage 4/7: VS Code Claude extension" `
+    -Title       "Stage 4/8: VS Code Claude extension" `
     -Description "Marketplace extension 'anthropic.claude-code'." `
     -Question    "Install Claude Code extension into VS Code?" `
     -Script      "Install-VSCodeExt.ps1"
 
 Run-Stage `
-    -Title       "Stage 5/7: uv (Python package manager)" `
+    -Title       "Stage 5/8: uv (Python package manager)" `
     -Description "Provides 'uvx' to run the MCP servers." `
     -Question    "Install uv?" `
     -Script      "Install-UV.ps1"
 
 Run-Stage `
-    -Title       "Stage 6/7: MCP servers" `
+    -Title       "Stage 6/8: MCP servers" `
     -Description "Adds 8 user-scope MCP servers via 'claude mcp add'." `
     -Question    "Add MCP servers?" `
     -Script      "Setup-MCP-Servers.ps1"
 
 Run-Stage `
-    -Title       "Stage 7/7: claude-base sync" `
+    -Title       "Stage 7/8: claude-base sync" `
     -Description "Makes ~/.claude/ a git working copy of claude-base (CLAUDE.md, agents, skills, memory, sessions, harvested). For existing non-git ~/.claude/ -- migration with backup, preserving credentials/history/plugins/projects." `
     -Question    "Sync ~/.claude/ with claude-base?" `
     -Script      "Apply-ClaudeMd.ps1" `
     -Args        @(if ($Yes) { '-Yes' } else { @() })
+
+# === Stage 8: Setup extras (Python pkgs + MCP servers from manifest) ===
+# Этот скрипт лежит в ~/.claude/scripts/setup-extras.ps1 -- он попал туда
+# вместе с claude-base sync на предыдущем шаге. Поэтому путь не относительно
+# инсталлятора, а из домашней .claude/.
+Write-Host ""
+Write-Host "--- Stage 8/8: Setup extras (manifest-driven) ---" -ForegroundColor Cyan
+Write-Host "Устанавливает Python 3.12 (если нет) + Python user-pkgs из manifest" -ForegroundColor Gray
+Write-Host "(matplotlib, ezdxf, paddleocr, ...) + autocad-mcp (GitHub clone + uv sync)." -ForegroundColor Gray
+Write-Host "Идемпотентно: пропускает уже установленное. ~5-10 минут, ~500 MB диска." -ForegroundColor Gray
+Write-Host "Подробнее: ~/.claude/scripts/SETUP-EXTRAS-README.md" -ForegroundColor Gray
+
+$extrasScript = Join-Path $env:USERPROFILE ".claude\scripts\setup-extras.ps1"
+$manifestFile = Join-Path $env:USERPROFILE ".claude\mcp-manifest.json"
+
+if (-not (Test-Path $extrasScript)) {
+    Write-Host "  setup-extras.ps1 не найден в ~/.claude/scripts/." -ForegroundColor Yellow
+    Write-Host "  Это значит Stage 7 пропущен или упал -- ~/.claude/ ещё не синхронизирован." -ForegroundColor Yellow
+    Write-Host "  Пропускаю Stage 8. Запусти заново когда Stage 7 пройдёт." -ForegroundColor Yellow
+} elseif (-not (Test-Path $manifestFile)) {
+    Write-Host "  mcp-manifest.json не найден -- старая версия claude-base?" -ForegroundColor Yellow
+    Write-Host "  Сделай cd ~/.claude && git pull, потом запусти setup-extras.ps1 вручную." -ForegroundColor Yellow
+} elseif (Confirm-Step "Run setup-extras to install Python + extra MCP servers?") {
+    $extrasArgs = @()
+    if ($Yes) { $extrasArgs += '-Yes' }
+    & $extrasScript @extrasArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  setup-extras.ps1 exit=$LASTEXITCODE -- часть extras может быть не установлена." -ForegroundColor Yellow
+        Write-Host "  Подробности: ~/.claude/auto-sync.log (записи 'setup-extras:')" -ForegroundColor Yellow
+    } else {
+        Write-Host "  Stage 8 OK -- extras установлены." -ForegroundColor Green
+    }
+} else {
+    Write-Host "Skipped. Запустить позже: pwsh `"$extrasScript`"" -ForegroundColor Yellow
+}
 
 # === Done ===========================================================
 Write-Host ""
 Write-Host "=== Done ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Close and re-open PowerShell so PATH picks up code/claude/uv." -ForegroundColor White
+Write-Host "  1. Close and re-open PowerShell so PATH picks up code/claude/uv/python." -ForegroundColor White
 Write-Host "  2. Run 'claude auth login' (browser flow) to log in." -ForegroundColor White
 Write-Host "  3. Restart Claude Code session to load MCP servers, skills, CLAUDE.md." -ForegroundColor White
-Write-Host "  4. Verify with 'claude mcp list' (should show 8 servers)." -ForegroundColor White
-Write-Host "  5. Open ~/.claude/CLAUDE.md and add personal rules in USER EXTENSIONS section." -ForegroundColor White
-Write-Host "  6. Future updates: re-run this installer (it does a git pull)." -ForegroundColor White
+Write-Host "  4. Verify with 'claude mcp list' (should show 9 servers including autocad-mcp)." -ForegroundColor White
+Write-Host "  5. (Optional) Если установлен AutoCAD: в AutoCAD выполнить APPLOAD и загрузить" -ForegroundColor White
+Write-Host "     ~/.claude/mcp-servers/autocad-mcp/lisp-code/mcp_dispatch.lsp" -ForegroundColor White
+Write-Host "     Это включает полный режим autocad-mcp (без него -- только headless ezdxf)." -ForegroundColor White
+Write-Host "  6. Open ~/.claude/CLAUDE.md and add personal rules in USER EXTENSIONS section." -ForegroundColor White
+Write-Host "  7. Future updates: re-run this installer (it does a git pull + idempotent extras)." -ForegroundColor White
+Write-Host "     Если в manifest появились новые MCP/pkgs -- они подтянутся через Stage 8." -ForegroundColor White
 Write-Host ""
 Write-Host "Each new terminal needs proxy re-set:" -ForegroundColor White
 Write-Host "  & '$here\Set-Proxy.ps1'" -ForegroundColor Gray
