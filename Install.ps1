@@ -8,6 +8,10 @@ No admin rights required.
 Step-by-step orchestrator. Asks before each stage:
 
   1. Proxy           Set HTTP_PROXY / HTTPS_PROXY for current session.
+                     Затем (не интерактивно) копирует proxy-хелперы
+                     (Set-Proxy.ps1, Start-Claude.bat/ps1/ahk) в
+                     ~/.claude/bin/ и создаёт ярлык в Пуске
+                     "Claude (with proxy)". Урок 15.
   2. VS Code         User installer, silent, %LOCALAPPDATA%\Programs\.
   3. Claude Code CLI Official installer, %USERPROFILE%\.local\bin\.
   4. VS Code ext     anthropic.claude-code from Marketplace.
@@ -82,6 +86,60 @@ Run-Stage `
     -Description "Required if you are behind a corporate Basic-auth proxy." `
     -Question    "Set HTTP proxy for the current session?" `
     -Script      "Set-Proxy.ps1"
+
+# === Persist proxy helpers ===========================================
+# Скопировать proxy-хелперы в ~/.claude/bin/, чтобы они оставались
+# доступными после удаления installer-папки. Не интерактивно: всегда,
+# даже если Stage 1 пропущен (на будущее: пользователь может переехать
+# в место где прокси нужен).
+# Урок 15 (memory/2026-05-18_lesson-15-proxy-helpers-persistence.md).
+Write-Host ""
+Write-Host "--- Persisting proxy helpers to ~/.claude/bin/ ---" -ForegroundColor Cyan
+
+$binDir = Join-Path $env:USERPROFILE ".claude\bin"
+if (-not (Test-Path $binDir)) {
+    New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+}
+
+$helpers = @(
+    "Set-Proxy.ps1",
+    "Set-Proxy.cmd",
+    "Start-Claude.ps1",
+    "Start-Claude.bat",
+    "Start-Claude.ahk"
+)
+$copied = 0
+foreach ($h in $helpers) {
+    $src = Join-Path $here $h
+    $dst = Join-Path $binDir $h
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        $copied++
+    }
+}
+Write-Host "  Скопировано $copied хелперов в $binDir" -ForegroundColor Gray
+
+# Start Menu shortcut to Start-Claude.bat (одним кликом запустить Claude с прокси)
+try {
+    $startMenu = [Environment]::GetFolderPath("Programs")
+    $shortcutPath = Join-Path $startMenu "Claude (with proxy).lnk"
+    if (-not (Test-Path $shortcutPath)) {
+        $startBat = Join-Path $binDir "Start-Claude.bat"
+        if (Test-Path $startBat) {
+            $wsh = New-Object -ComObject WScript.Shell
+            $shortcut = $wsh.CreateShortcut($shortcutPath)
+            $shortcut.TargetPath      = $startBat
+            $shortcut.WorkingDirectory = $env:USERPROFILE
+            $shortcut.IconLocation    = "$env:SystemRoot\System32\cmd.exe,0"
+            $shortcut.Save()
+            Write-Host "  Ярлык Пуск -> 'Claude (with proxy)'" -ForegroundColor Gray
+        }
+    } else {
+        Write-Host "  Ярлык 'Claude (with proxy)' уже существует, пропускаю" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "  Не удалось создать ярлык в Пуске (не критично): $($_.Exception.Message)" -ForegroundColor Yellow
+}
 
 Run-Stage `
     -Title       "Stage 2/8: VS Code (User installer)" `
@@ -172,5 +230,6 @@ Write-Host "  7. Future updates: re-run this installer (it does a git pull + ide
 Write-Host "     Если в manifest появились новые MCP/pkgs -- они подтянутся через Stage 8." -ForegroundColor White
 Write-Host ""
 Write-Host "Each new terminal needs proxy re-set:" -ForegroundColor White
-Write-Host "  & '$here\Set-Proxy.ps1'" -ForegroundColor Gray
+Write-Host "  & `"$env:USERPROFILE\.claude\bin\Set-Proxy.ps1`"" -ForegroundColor Gray
+Write-Host "Или через Пуск -> 'Claude (with proxy)' (одним кликом)." -ForegroundColor Gray
 Write-Host ""
