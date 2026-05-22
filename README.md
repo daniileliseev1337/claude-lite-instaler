@@ -5,7 +5,7 @@
 `~/.claude/` к общей базе [`claude-base`](https://github.com/daniileliseev1337/claude-base)
 через git.
 
-## Что ставит — 7 стадий
+## Что ставит — 8 стадий
 
 | Стадия | Компонент | Куда |
 |--------|-----------|------|
@@ -15,7 +15,8 @@
 | 4. VS Code extension | `anthropic.claude-code` через Marketplace. | `%USERPROFILE%\.vscode\extensions\` |
 | 5. uv | Astral installer. Нужен для `uvx`. | `%USERPROFILE%\.local\bin\uv.exe` |
 | 6. MCP servers | 8 общеполезных через `claude mcp add --scope user`: `markitdown`, `document-loader`, `word`, `excel`, `pdf-mcp`, `sequential-thinking`, `fetch`, `time`. | `~/.claude.json` |
-| 7. claude-base sync | `~/.claude/` становится git-рабочей-копией `claude-base`. | `~/.claude/` |
+| 7. claude-base sync | `~/.claude/` становится git-рабочей-копией `claude-base`. После clone/pull: persistent GitHub bypass-proxy в global git config + `merge-shared-settings.ps1` (Phase 1 sync-redesign). | `~/.claude/` |
+| 8. Setup extras | Python 3.12 + user-packages (matplotlib, ezdxf, paddleocr, easyocr, iopaint, …) + дополнительные MCP из `~/.claude/mcp-manifest.json`: `autocad-mcp`, `adeu`. Итого 10 серверов после restart. | `~/.local/`, `~/.claude/mcp-servers/` |
 
 ## Что устанавливает Stage 7 в `~/.claude/`
 
@@ -23,17 +24,29 @@
 
 - **`CLAUDE.md`** — глобальный manifest с CORE / USER EXTENSIONS секциями, STOP-процедурой, MCP-роутингом, скилл-роутингом, harvest-workflow.
 - **`agents/`** — `designer` (доменный для проектирования), `auditor` (общий ревьюер), `word-checker` / `excel-validator` / `pdf-reviewer` (узкие read-only ревьюеры).
-- **`skills/`** — `karpathy-guidelines`, `pdf-helper`, `excel-helper`, `word-helper`.
-- **`memory/`**, **`sessions/`**, **`harvested/`** — структура для аналитической работы.
+- **`skills/`** — `karpathy-guidelines`, `pdf-helper`, `excel-helper`, `word-helper`, `chains-pattern`, `handoff-to-new-chat`, и др.
+- **`chains/`** — именованные многошаговые цепочки (`docx-from-template`, `pdf-scan-extract`, …).
+- **`scripts/`** — инфраструктура: `auto-pull.ps1`, `auto-push.ps1`, `merge-shared-settings.ps1`, `feedback-collector.ps1`, `verify-claude-base.ps1`, **`Update-ClaudeBase.bat`** (one-command updater для будущих обновлений).
+- **`settings.shared.json`** — shared между всеми ПК (language, hooks, autoMode, enabledPlugins). Phase 1 sync-redesign. После pull `merge-shared-settings.ps1` вливает эти ключи в personal `settings.json`.
+- **`memory/`**, **`session-reports/`**, **`harvested/`** — структура для аналитической работы.
 
-После установки: при следующем запуске Stage 7 делает `git pull` — база обновляется до актуального состояния. Каждый ПК синхронизирован с одним источником истины.
+После установки: при следующем запуске Stage 7 делает `git pull` + **persistent GitHub bypass-proxy** + **`merge-shared-settings.ps1`** — база актуальна на каждом ПК с одинаковыми shared настройками.
+
+## Auto-sync hooks (Phase 1+2 sync-redesign)
+
+После Stage 7 в `~/.claude/settings.json` (через merge-shared) подключены два hook'а:
+
+- **SessionStart hook** → `scripts/auto-pull.ps1` → `git pull --rebase --autostash`. База актуализируется автоматически при каждом старте сессии Claude Code.
+- **SessionEnd hook** → `scripts/auto-push.ps1` → если есть локальные правки в managed paths (chains/, skills/, memory/, session-reports/, …) → коммит + push. На consumer-ПК (без `.developer-marker`) вместо push в main репо запускается `feedback-collector.ps1` → отправляет файлы из `feedback-pending/` в отдельный private репо `claude-base-feedback` через GitHub REST API.
+
+Чтобы включить online feedback channel (опционально), запусти после установки `~/.claude/scripts/Update-ClaudeBase.bat` — он спросит PAT и создаст `.feedback-config.json` интерактивно.
 
 ## Что НЕ делает
 
 - Не требует прав администратора.
 - Не трогает `~/.claude/.credentials.json`, `history.jsonl`, `plugins/`, `projects/`, `cache/`, `backups/`, `file-history/`, `downloads/`, `settings.local.json` — это **личные** файлы пользователя, при миграции и pull сохраняются как есть.
 - Не пишет в реестр, не правит User PATH сам.
-- Не пушит ничего на GitHub автоматически (это делается отдельным механизмом auto-pull/push hooks — будет в следующей версии).
+- Не настраивает feedback channel автоматически — PAT запрашивается отдельным шагом через `Update-ClaudeBase.bat` (опционально, можно пропустить).
 
 ## CLAUDE.md: CORE и USER EXTENSIONS
 
@@ -75,7 +88,11 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 **Обновление существующей установки:**
 
-Запусти `.\Install.ps1` ещё раз. Все стадии **идемпотентны** — каждый скрипт сначала проверяет, не установлен ли уже компонент. Stage 7 делает `git pull --rebase --autostash` для обновления базы.
+Два пути:
+
+1. **Рекомендуется:** двойной клик на `~/.claude/scripts/Update-ClaudeBase.bat` — one-command updater из claude-base. Делает: detect role → git pull → merge-shared-settings → verify (23 проверки) → (consumer) smoke-test feedback push → итоговый PASS/FAIL summary.
+
+2. **Альтернатива:** запусти `.\Install.ps1` ещё раз. Все стадии **идемпотентны** — Stage 7 делает `git pull` + `merge-shared-settings`, Stage 8 догоняет manifest (новые MCP/pkgs из `mcp-manifest.json`).
 
 ## Миграция существующей `~/.claude/`
 
@@ -183,6 +200,7 @@ claude-lite-instaler/
 ## Связанные репо
 
 - [`claude-base`](https://github.com/daniileliseev1337/claude-base) — общая база, которая клонируется в `~/.claude/`.
+- [`claude-base-feedback`](https://github.com/daniileliseev1337/claude-base-feedback) — private репо для feedback от сотрудников (push через `feedback-collector.ps1` на consumer-ПК, pull через `pull-feedback.ps1` на developer-ПК).
 
 ## История
 

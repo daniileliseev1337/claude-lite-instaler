@@ -221,13 +221,24 @@ Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Close and re-open PowerShell so PATH picks up code/claude/uv/python." -ForegroundColor White
 Write-Host "  2. Run 'claude auth login' (browser flow) to log in." -ForegroundColor White
 Write-Host "  3. Restart Claude Code session to load MCP servers, skills, CLAUDE.md." -ForegroundColor White
-Write-Host "  4. Verify with 'claude mcp list' (should show 9 servers including autocad-mcp)." -ForegroundColor White
+Write-Host "  4. Verify with 'claude mcp list' (should show 10 servers: 8 base + autocad-mcp + adeu)." -ForegroundColor White
 Write-Host "  5. (Optional) Если установлен AutoCAD: в AutoCAD выполнить APPLOAD и загрузить" -ForegroundColor White
 Write-Host "     ~/.claude/mcp-servers/autocad-mcp/lisp-code/mcp_dispatch.lsp" -ForegroundColor White
 Write-Host "     Это включает полный режим autocad-mcp (без него -- только headless ezdxf)." -ForegroundColor White
 Write-Host "  6. Open ~/.claude/CLAUDE.md and add personal rules in USER EXTENSIONS section." -ForegroundColor White
-Write-Host "  7. Future updates: re-run this installer (it does a git pull + idempotent extras)." -ForegroundColor White
-Write-Host "     Если в manifest появились новые MCP/pkgs -- они подтянутся через Stage 8." -ForegroundColor White
+Write-Host ""
+Write-Host "  --- Online feedback channel (опционально) ---" -ForegroundColor Cyan
+Write-Host "  7. Чтобы включить общий обмен (feedback push в claude-base-feedback):" -ForegroundColor White
+Write-Host "     запусти ~/.claude/scripts/Update-ClaudeBase.bat" -ForegroundColor Gray
+Write-Host "     Он спросит PAT (Personal Access Token, получи у Daniil'а) и" -ForegroundColor Gray
+Write-Host "     сделает smoke-test push в твою feedback ветку." -ForegroundColor Gray
+Write-Host ""
+Write-Host "  --- Future updates ---" -ForegroundColor Cyan
+Write-Host "  8. Для будущих обновлений базы — ДВОЙНОЙ КЛИК на:" -ForegroundColor White
+Write-Host "     ~/.claude/scripts/Update-ClaudeBase.bat" -ForegroundColor Gray
+Write-Host "     Делает: git pull + merge shared settings + verify (23 проверки)" -ForegroundColor Gray
+Write-Host "     + (consumer) smoke-test feedback push. Idempotent." -ForegroundColor Gray
+Write-Host "     Альтернатива: re-run этого installer'а (он тоже git pull-ит)." -ForegroundColor Gray
 Write-Host ""
 Write-Host "Each new terminal needs proxy re-set:" -ForegroundColor White
 Write-Host "  & `"$env:USERPROFILE\.claude\bin\Set-Proxy.ps1`"" -ForegroundColor Gray

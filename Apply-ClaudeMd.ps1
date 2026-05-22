@@ -61,6 +61,35 @@ function Write-OK   { param($m) Write-Host "  [OK] $m" -ForegroundColor Green }
 function Write-Warn { param($m) Write-Host "  [WARN] $m" -ForegroundColor Yellow }
 function Write-Err  { param($m) Write-Host "  [ERR] $m" -ForegroundColor Red }
 
+# === Invoke-PostSync ================================================
+# After every successful sync (clone / pull / migration restore), apply
+# Phase 1 sync-redesign artifacts:
+#   1. Persistent GitHub bypass-proxy in global git config -- required
+#      so subsequent auto-pull / auto-push hooks work behind corp proxy.
+#   2. merge-shared-settings.ps1 -- pull shared keys from
+#      settings.shared.json into personal settings.json without
+#      overwriting UI-driven user keys.
+# Idempotent: re-running has no effect if both are already in place.
+function Invoke-PostSync {
+    Write-Step "Applying persistent GitHub bypass-proxy..."
+    git config --global http.https://github.com/.proxy ""  2>$null
+    git config --global https.https://github.com/.proxy "" 2>$null
+    Write-OK "GitHub bypass-proxy persistent in global git config"
+
+    $mergeScript = Join-Path $ClaudeDir 'scripts\merge-shared-settings.ps1'
+    if (Test-Path $mergeScript) {
+        Write-Step "Merging settings.shared.json -> personal settings.json..."
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $mergeScript
+        if ($LASTEXITCODE -eq 0) {
+            Write-OK "merge-shared-settings done"
+        } else {
+            Write-Warn "merge-shared-settings exit=$LASTEXITCODE (non-fatal)"
+        }
+    } else {
+        Write-Warn "scripts\merge-shared-settings.ps1 not in base -- older claude-base?"
+    }
+}
+
 Write-Host ""
 Write-Host "=== Stage 7: sync ~/.claude/ with claude-base ===" -ForegroundColor White
 Write-Host "    Repo: $BaseRepo" -ForegroundColor Gray
@@ -83,6 +112,7 @@ if (-not (Test-Path $ClaudeDir)) {
         exit 1
     }
     Write-OK "claude-base cloned into $ClaudeDir"
+    Invoke-PostSync
     return
 }
 
@@ -140,6 +170,7 @@ if (Test-Path $GitDir) {
     } finally {
         Pop-Location
     }
+    Invoke-PostSync
     return
 }
 
@@ -224,3 +255,5 @@ Write-Host ""
 Write-OK "Migration complete."
 Write-OK "Backup: $backupDir"
 Write-Host "         (you can remove it after verifying everything works)"
+
+Invoke-PostSync
