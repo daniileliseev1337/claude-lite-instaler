@@ -221,7 +221,7 @@ Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Close and re-open PowerShell so PATH picks up code/claude/uv/python." -ForegroundColor White
 Write-Host "  2. Run 'claude auth login' (browser flow) to log in." -ForegroundColor White
 Write-Host "  3. Restart Claude Code session to load MCP servers, skills, CLAUDE.md." -ForegroundColor White
-Write-Host "  4. Verify with 'claude mcp list' (should show 10 servers: 8 base + autocad-mcp + adeu)." -ForegroundColor White
+Write-Host "  4. Verify with 'claude mcp list' (should show 9-10 servers: 8 base + adeu, + autocad-mcp if AutoCAD installed)." -ForegroundColor White
 Write-Host "  5. (Optional) Если установлен AutoCAD: в AutoCAD выполнить APPLOAD и загрузить" -ForegroundColor White
 Write-Host "     ~/.claude/mcp-servers/autocad-mcp/lisp-code/mcp_dispatch.lsp" -ForegroundColor White
 Write-Host "     Это включает полный режим autocad-mcp (без него -- только headless ezdxf)." -ForegroundColor White
