@@ -22,6 +22,10 @@ Step-by-step orchestrator. Asks before each stage:
   8. Setup extras    Python 3.12 + 7 Python pkgs (matplotlib, ezdxf, paddleocr...)
                      + autocad-mcp (GitHub clone + uv sync + claude mcp add)
                      по ~/.claude/mcp-manifest.json. Идемпотентно.
+  9. Claude Desktop  (Optional) Native Claude Code Desktop app, per-user install
+                     via https://claude.ai/api/desktop/win32/x64/setup/latest/redirect.
+                     Альтернатива VS Code extension для тех кто хочет отдельное
+                     приложение. Запускается через Start-Claude.bat -> Mode 3.
 
 Что этот установщик НЕ делает:
   - не клонирует другие репозитории, не настраивает push в чужие remote
@@ -82,7 +86,7 @@ Write-Host "=== Lite installer for Claude Code workstation ===" -ForegroundColor
 Write-Host "No admin rights required. Stages are skippable." -ForegroundColor Gray
 
 Run-Stage `
-    -Title       "Stage 1/8: Proxy" `
+    -Title       "Stage 1/9: Proxy" `
     -Description "Required if you are behind a corporate Basic-auth proxy." `
     -Question    "Set HTTP proxy for the current session?" `
     -Script      "Set-Proxy.ps1"
@@ -142,37 +146,37 @@ try {
 }
 
 Run-Stage `
-    -Title       "Stage 2/8: VS Code (User installer)" `
+    -Title       "Stage 2/9: VS Code (User installer)" `
     -Description "Installs VS Code into %LOCALAPPDATA%\Programs\, no admin." `
     -Question    "Install VS Code?" `
     -Script      "Install-VSCode.ps1"
 
 Run-Stage `
-    -Title       "Stage 3/8: Claude Code CLI" `
+    -Title       "Stage 3/9: Claude Code CLI" `
     -Description "Official Anthropic installer. Standalone ~250 MB binary." `
     -Question    "Install Claude Code CLI?" `
     -Script      "Install-ClaudeCode.ps1"
 
 Run-Stage `
-    -Title       "Stage 4/8: VS Code Claude extension" `
+    -Title       "Stage 4/9: VS Code Claude extension" `
     -Description "Marketplace extension 'anthropic.claude-code'." `
     -Question    "Install Claude Code extension into VS Code?" `
     -Script      "Install-VSCodeExt.ps1"
 
 Run-Stage `
-    -Title       "Stage 5/8: uv (Python package manager)" `
+    -Title       "Stage 5/9: uv (Python package manager)" `
     -Description "Provides 'uvx' to run the MCP servers." `
     -Question    "Install uv?" `
     -Script      "Install-UV.ps1"
 
 Run-Stage `
-    -Title       "Stage 6/8: MCP servers" `
+    -Title       "Stage 6/9: MCP servers" `
     -Description "Adds 8 user-scope MCP servers via 'claude mcp add'." `
     -Question    "Add MCP servers?" `
     -Script      "Setup-MCP-Servers.ps1"
 
 Run-Stage `
-    -Title       "Stage 7/8: claude-base sync" `
+    -Title       "Stage 7/9: claude-base sync" `
     -Description "Makes ~/.claude/ a git working copy of claude-base (CLAUDE.md, agents, skills, memory, sessions, harvested). For existing non-git ~/.claude/ -- migration with backup, preserving credentials/history/plugins/projects." `
     -Question    "Sync ~/.claude/ with claude-base?" `
     -Script      "Apply-ClaudeMd.ps1" `
@@ -183,7 +187,7 @@ Run-Stage `
 # вместе с claude-base sync на предыдущем шаге. Поэтому путь не относительно
 # инсталлятора, а из домашней .claude/.
 Write-Host ""
-Write-Host "--- Stage 8/8: Setup extras (manifest-driven) ---" -ForegroundColor Cyan
+Write-Host "--- Stage 8/9: Setup extras (manifest-driven) ---" -ForegroundColor Cyan
 Write-Host "Устанавливает Python 3.12 (если нет) + Python user-pkgs из manifest" -ForegroundColor Gray
 Write-Host "(matplotlib, ezdxf, paddleocr, ...) + autocad-mcp (GitHub clone + uv sync)." -ForegroundColor Gray
 Write-Host "Идемпотентно: пропускает уже установленное. ~5-10 минут, ~500 MB диска." -ForegroundColor Gray
@@ -212,6 +216,12 @@ if (-not (Test-Path $extrasScript)) {
 } else {
     Write-Host "Skipped. Запустить позже: pwsh `"$extrasScript`"" -ForegroundColor Yellow
 }
+
+Run-Stage `
+    -Title       "Stage 9/9: Claude Code Desktop (Optional)" `
+    -Description "Native Claude app, per-user install (no admin). Alternative to VS Code extension. ~150 MB. Запускать потом через Start-Claude.bat -> Mode 3." `
+    -Question    "Install Claude Code Desktop?" `
+    -Script      "Install-ClaudeDesktop.ps1"
 
 # === Done ===========================================================
 Write-Host ""
@@ -243,4 +253,8 @@ Write-Host ""
 Write-Host "Each new terminal needs proxy re-set:" -ForegroundColor White
 Write-Host "  & `"$env:USERPROFILE\.claude\bin\Set-Proxy.ps1`"" -ForegroundColor Gray
 Write-Host "Или через Пуск -> 'Claude (with proxy)' (одним кликом)." -ForegroundColor Gray
+Write-Host ""
+Write-Host "  --- Claude Code Desktop (если установлен на Stage 9) ---" -ForegroundColor Cyan
+Write-Host "  Пуск -> 'Claude (with proxy)' -> Mode 3 (Desktop)" -ForegroundColor Gray
+Write-Host "  Это запустит Claude Code Desktop с настроенным прокси." -ForegroundColor Gray
 Write-Host ""
