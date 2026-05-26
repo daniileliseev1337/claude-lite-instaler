@@ -15,9 +15,45 @@ If $env:HTTPS_PROXY is set, the file is downloaded via the proxy.
 After install, the app can be launched via:
   - Start menu shortcut "Claude"
   - Start-Claude.bat -> Mode 3 (Desktop) with corporate proxy
+
+.WARNING
+Claude Code Desktop UI requires NON-RU IP (VPN or non-RU exit) to render.
+Anthropic geo-blocks bootstrap API for RU IPs - app installs OK but
+opens to BLANK WHITE SCREEN on first launch without VPN.
+Confirmed 2026-05-26 on DELISEEV-PC and DANIILPC (with/without VPN).
+Diagnostic: %APPDATA%\Claude\logs\main.log shows
+  "Blocked redirect to: https://www.anthropic.com/app-unavailable-in-region"
+MS Store version has SAME issue (tested 2026-05-26) - install method
+does not matter, geoblock is on server-side by client IP.
+
+WORKAROUNDS:
+  - Personal VPN (any non-RU exit) - works on DANIILPC
+  - Corporate VPS gateway abroad - infrastructure project
+  - Use VS Code Extension instead (uses /v1/messages API which is
+    geo-permissive) - WORKS for colleagues without VPN
+
+This script is OPTIONAL. Skip Stage 9 of Install.ps1 if no VPN available.
+Details: ~/.claude/memory/2026-05-26_anthropic_geoblock_ru.md
 #>
 
 $ErrorActionPreference = "Stop"
+
+# === VPN Warning (geo-block) =======================================
+Write-Host ""
+Write-Host "================================================================" -ForegroundColor Yellow
+Write-Host "  WARNING: Claude Desktop UI requires non-RU IP (VPN) to render" -ForegroundColor Yellow
+Write-Host "================================================================" -ForegroundColor Yellow
+Write-Host "  Anthropic geo-blocks bootstrap API for RU IPs."                 -ForegroundColor Yellow
+Write-Host "  Without VPN: app installs OK but shows BLANK WHITE SCREEN."     -ForegroundColor Yellow
+Write-Host "  Alternative: VS Code Extension (works without VPN through"      -ForegroundColor Yellow
+Write-Host "  corporate proxy). See README for details."                      -ForegroundColor Yellow
+Write-Host "================================================================" -ForegroundColor Yellow
+Write-Host ""
+$skip = Read-Host "Continue installation? (y=install / n=skip Stage 9)"
+if ($skip -ne "y" -and $skip -ne "Y") {
+    Write-Host "Stage 9 skipped. Use VS Code Extension via Start-Claude.bat -> Mode 2." -ForegroundColor Cyan
+    return
+}
 
 # === Already installed? ============================================
 $installedExe = "$env:LOCALAPPDATA\AnthropicClaude\claude.exe"
