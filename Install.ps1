@@ -49,6 +49,26 @@ param(
 $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot
 
+# UTF-8 вывод — чтобы кириллица и линии рамок рендерились на любом codepage.
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch {}
+
+function Write-Banner {
+    Write-Host ""
+    Write-Host "  ════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+    Write-Host "     CLAUDE-BASE" -ForegroundColor Cyan -NoNewline
+    Write-Host "  ·  Lite Installer" -ForegroundColor White
+    Write-Host "     K-7 workstation · без прав админа · этапы пропускаемы" -ForegroundColor Gray
+    Write-Host "  ════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+}
+
+function Write-Section {
+    param([string]$Title, [string]$Color = "Cyan")
+    Write-Host ""
+    $pad = [Math]::Max(4, 58 - $Title.Length)
+    Write-Host "  ── $Title " -ForegroundColor $Color -NoNewline
+    Write-Host ("─" * $pad) -ForegroundColor DarkCyan
+}
+
 function Confirm-Step {
     param([string]$Question)
     if ($Yes) { return $true }
@@ -64,9 +84,8 @@ function Run-Stage {
         [string]$Script,
         [string[]]$Args = @()
     )
-    Write-Host ""
-    Write-Host "--- $Title ---" -ForegroundColor Cyan
-    Write-Host $Description -ForegroundColor Gray
+    Write-Section $Title
+    Write-Host "     $Description" -ForegroundColor Gray
 
     if (Confirm-Step $Question) {
         $scriptPath = Join-Path $here $Script
@@ -81,9 +100,7 @@ function Run-Stage {
     }
 }
 
-Write-Host ""
-Write-Host "=== Lite installer for Claude Code workstation ===" -ForegroundColor Cyan
-Write-Host "No admin rights required. Stages are skippable." -ForegroundColor Gray
+Write-Banner
 
 Run-Stage `
     -Title       "Stage 1/9: Proxy" `
@@ -97,8 +114,7 @@ Run-Stage `
 # даже если Stage 1 пропущен (на будущее: пользователь может переехать
 # в место где прокси нужен).
 # Урок 15 (memory/2026-05-18_lesson-15-proxy-helpers-persistence.md).
-Write-Host ""
-Write-Host "--- Persisting proxy helpers to ~/.claude/bin/ ---" -ForegroundColor Cyan
+Write-Section "Persist proxy helpers → ~/.claude/bin/"
 
 $binDir = Join-Path $env:USERPROFILE ".claude\bin"
 if (-not (Test-Path $binDir)) {
@@ -186,8 +202,7 @@ Run-Stage `
 # Этот скрипт лежит в ~/.claude/scripts/setup-extras.ps1 -- он попал туда
 # вместе с claude-base sync на предыдущем шаге. Поэтому путь не относительно
 # инсталлятора, а из домашней .claude/.
-Write-Host ""
-Write-Host "--- Stage 8/9: Setup extras (manifest-driven) ---" -ForegroundColor Cyan
+Write-Section "Stage 8/9: Setup extras (manifest-driven)"
 Write-Host "Устанавливает Python 3.12 (если нет) + Python user-pkgs из manifest" -ForegroundColor Gray
 Write-Host "(matplotlib, ezdxf, paddleocr, ...) + autocad-mcp (GitHub clone + uv sync)." -ForegroundColor Gray
 Write-Host "Идемпотентно: пропускает уже установленное. ~5-10 минут, ~500 MB диска." -ForegroundColor Gray
@@ -223,38 +238,42 @@ Run-Stage `
     -Question    "Install Claude Code Desktop?" `
     -Script      "Install-ClaudeDesktop.ps1"
 
+# === Feedback channel — заметный prompted-шаг (НЕ «опционально» в тексте) ===
+Write-Section "Feedback-канал — чтобы твои уроки доходили до базы" "Green"
+Write-Host "     ВСЕ машины кроме dev-хаба шлют правки/уроки в claude-base-feedback." -ForegroundColor Gray
+Write-Host "     Не настроишь — работаешь «в стол», база о твоих находках не узнает." -ForegroundColor Gray
+Write-Host "     Нужен PAT (Personal Access Token) — получи у Daniil'а." -ForegroundColor Gray
+$updBat = Join-Path $env:USERPROFILE ".claude\scripts\Update-ClaudeBase.bat"
+if (Confirm-Step "Настроить feedback-канал сейчас? (рекомендуется всем, кроме хаба)") {
+    if (Test-Path $updBat) {
+        Write-Host "     Запускаю Update-ClaudeBase.bat (спросит PAT, сделает smoke-test push)..." -ForegroundColor Gray
+        & cmd /c "`"$updBat`""
+    } else {
+        Write-Host "     Update-ClaudeBase.bat не найден — Stage 7 не прошёл. Позже: ~/.claude/scripts/Update-ClaudeBase.bat" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "     Пропущено. Включить позже — двойной клик: ~/.claude/scripts/Update-ClaudeBase.bat" -ForegroundColor Yellow
+}
+
 # === Done ===========================================================
 Write-Host ""
-Write-Host "=== Done ===" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Close and re-open PowerShell so PATH picks up code/claude/uv/python." -ForegroundColor White
-Write-Host "  2. Run 'claude auth login' (browser flow) to log in." -ForegroundColor White
-Write-Host "  3. Restart Claude Code session to load MCP servers, skills, CLAUDE.md." -ForegroundColor White
-Write-Host "  4. Verify with 'claude mcp list' (should show 9-10 servers: 8 base + adeu, + autocad-mcp if AutoCAD installed)." -ForegroundColor White
-Write-Host "  5. (Optional) Если установлен AutoCAD: в AutoCAD выполнить APPLOAD и загрузить" -ForegroundColor White
-Write-Host "     ~/.claude/mcp-servers/autocad-mcp/lisp-code/mcp_dispatch.lsp" -ForegroundColor White
-Write-Host "     Это включает полный режим autocad-mcp (без него -- только headless ezdxf)." -ForegroundColor White
-Write-Host "  6. Open ~/.claude/CLAUDE.md and add personal rules in USER EXTENSIONS section." -ForegroundColor White
-Write-Host ""
-Write-Host "  --- Online feedback channel (опционально) ---" -ForegroundColor Cyan
-Write-Host "  7. Чтобы включить общий обмен (feedback push в claude-base-feedback):" -ForegroundColor White
-Write-Host "     запусти ~/.claude/scripts/Update-ClaudeBase.bat" -ForegroundColor Gray
-Write-Host "     Он спросит PAT (Personal Access Token, получи у Daniil'а) и" -ForegroundColor Gray
-Write-Host "     сделает smoke-test push в твою feedback ветку." -ForegroundColor Gray
-Write-Host ""
-Write-Host "  --- Future updates ---" -ForegroundColor Cyan
-Write-Host "  8. Для будущих обновлений базы — ДВОЙНОЙ КЛИК на:" -ForegroundColor White
-Write-Host "     ~/.claude/scripts/Update-ClaudeBase.bat" -ForegroundColor Gray
-Write-Host "     Делает: git pull + merge shared settings + verify (23 проверки)" -ForegroundColor Gray
-Write-Host "     + (consumer) smoke-test feedback push. Idempotent." -ForegroundColor Gray
-Write-Host "     Альтернатива: re-run этого installer'а (он тоже git pull-ит)." -ForegroundColor Gray
-Write-Host ""
-Write-Host "Each new terminal needs proxy re-set:" -ForegroundColor White
-Write-Host "  & `"$env:USERPROFILE\.claude\bin\Set-Proxy.ps1`"" -ForegroundColor Gray
-Write-Host "Или через Пуск -> 'Claude (with proxy)' (одним кликом)." -ForegroundColor Gray
-Write-Host ""
-Write-Host "  --- Claude Code Desktop (если установлен на Stage 9) ---" -ForegroundColor Cyan
-Write-Host "  Пуск -> 'Claude (with proxy)' -> Mode 3 (Desktop)" -ForegroundColor Gray
-Write-Host "  Это запустит Claude Code Desktop с настроенным прокси." -ForegroundColor Gray
+Write-Host "  ════════════════════════════════════════════════════════" -ForegroundColor DarkGreen
+Write-Host "     ✓ Установка завершена" -ForegroundColor Green
+Write-Host "  ════════════════════════════════════════════════════════" -ForegroundColor DarkGreen
+
+Write-Section "Дальше"
+Write-Host "     1. Закрой и открой PowerShell заново (PATH подхватит code/claude/uv/python)." -ForegroundColor White
+Write-Host "     2. claude auth login  — вход через браузер." -ForegroundColor White
+Write-Host "     3. Перезапусти Claude Code — подхватит MCP, skills, CLAUDE.md." -ForegroundColor White
+Write-Host "     4. claude mcp list  — должно быть 9-10 серверов (8 базовых + adeu [+ autocad])." -ForegroundColor White
+Write-Host "     5. (если есть AutoCAD) APPLOAD → ~/.claude/mcp-servers/autocad-mcp/lisp-code/mcp_dispatch.lsp" -ForegroundColor White
+Write-Host "     6. ~/.claude/CLAUDE.md — свои правила в секции USER EXTENSIONS." -ForegroundColor White
+
+Write-Section "Обновления базы"
+Write-Host "     Двойной клик: ~/.claude/scripts/Update-ClaudeBase.bat" -ForegroundColor White
+Write-Host "     git pull + merge settings + verify (23 проверки) + feedback push. Идемпотентно." -ForegroundColor Gray
+
+Write-Section "Прокси и Desktop"
+Write-Host "     Новый терминал: & `"$env:USERPROFILE\.claude\bin\Set-Proxy.ps1`"  или Пуск → 'Claude (with proxy)'" -ForegroundColor Gray
+Write-Host "     Claude Desktop (если ставил Stage 9): Пуск → 'Claude (with proxy)' → Mode 3" -ForegroundColor Gray
 Write-Host ""
