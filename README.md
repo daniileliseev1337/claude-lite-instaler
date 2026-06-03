@@ -39,14 +39,14 @@
 - **SessionStart hook** → `scripts/auto-pull.ps1` → `git pull --rebase --autostash`. База актуализируется автоматически при каждом старте сессии Claude Code.
 - **SessionEnd hook** → `scripts/auto-push.ps1` → если есть локальные правки в managed paths (chains/, skills/, memory/, session-reports/, …) → коммит + push. На consumer-ПК (без `.developer-marker`) вместо push в main репо запускается `feedback-collector.ps1` → отправляет файлы из `feedback-pending/` в отдельный private репо `claude-base-feedback` через GitHub REST API.
 
-Чтобы включить online feedback channel (опционально), запусти после установки `~/.claude/scripts/Update-ClaudeBase.bat` — он спросит PAT и создаст `.feedback-config.json` интерактивно.
+**Feedback channel предлагается отдельным prompted-шагом** в конце установки (заметная зелёная секция, рекомендуется всем кроме dev-хаба). На «да» запускает `~/.claude/scripts/Update-ClaudeBase.bat` — спросит PAT и создаст `.feedback-config.json` интерактивно. Можно пропустить и включить позже тем же `.bat`.
 
 ## Что НЕ делает
 
 - Не требует прав администратора.
 - Не трогает `~/.claude/.credentials.json`, `history.jsonl`, `plugins/`, `projects/`, `cache/`, `backups/`, `file-history/`, `downloads/`, `settings.local.json` — это **личные** файлы пользователя, при миграции и pull сохраняются как есть.
 - Не пишет в реестр, не правит User PATH сам.
-- Не настраивает feedback channel автоматически — PAT запрашивается отдельным шагом через `Update-ClaudeBase.bat` (опционально, можно пропустить).
+- Не настраивает feedback channel молча — он предлагается **заметным prompted-шагом** в конце установки (запускает `Update-ClaudeBase.bat`, спросит PAT). Рекомендуется всем кроме dev-хаба; можно пропустить.
 
 ## CLAUDE.md: CORE и USER EXTENSIONS
 
@@ -165,7 +165,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 claude-lite-instaler/
 ├── README.md                  # этот файл
 ├── Install.cmd                # двойной клик — обёртка установки
-├── Install.ps1                # orchestrator (7 стадий)
+├── Install.ps1                # orchestrator (9 стадий, banner + стилизованные секции)
 ├── Apply-ClaudeMd.ps1         # стадия 7 — git sync claude-base
 ├── Apply-ClaudeMd.ps1.OLD     # старая версия для reference (до перехода на git)
 ├── Start-Claude.bat           # двойной клик — прокси + claude
