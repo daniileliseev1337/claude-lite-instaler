@@ -265,7 +265,7 @@ Write-Section "Дальше"
 Write-Host "     1. Закрой и открой PowerShell заново (PATH подхватит code/claude/uv/python)." -ForegroundColor White
 Write-Host "     2. claude auth login  — вход через браузер." -ForegroundColor White
 Write-Host "     3. Перезапусти Claude Code — подхватит MCP, skills, CLAUDE.md." -ForegroundColor White
-Write-Host "     4. claude mcp list  — должно быть 9-10 серверов (8 базовых + adeu [+ autocad])." -ForegroundColor White
+Write-Host "     4. claude mcp list  — должно быть 11-12 серверов (8 базовых + adeu + playwright [+ autocad])." -ForegroundColor White
 Write-Host "     5. (если есть AutoCAD) APPLOAD → ~/.claude/mcp-servers/autocad-mcp/lisp-code/mcp_dispatch.lsp" -ForegroundColor White
 Write-Host "     6. ~/.claude/CLAUDE.md — свои правила в секции USER EXTENSIONS." -ForegroundColor White
 

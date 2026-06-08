@@ -42,8 +42,10 @@ else {
 
 $extId = "anthropic.claude-code"
 
-# Already installed?
-$listed = & $codeCmd --list-extensions 2>&1
+# Already installed?  (2>$null drops stderr; NEVER 2>&1 -- code.cmd/node
+# emit DeprecationWarnings to stderr that 2>&1 would wrap in
+# NativeCommandError under ErrorActionPreference='Stop' and abort.)
+$listed = & $codeCmd --list-extensions 2>$null
 if ($LASTEXITCODE -eq 0 -and ($listed -contains $extId)) {
     Write-Host "Extension '$extId' already installed." -ForegroundColor Green
     exit 0
@@ -52,8 +54,11 @@ if ($LASTEXITCODE -eq 0 -and ($listed -contains $extId)) {
 Write-Host "Installing VS Code extension: $extId" -ForegroundColor Cyan
 Write-Host "(Marketplace download uses VS Code proxy settings.)" -ForegroundColor Gray
 
-$output = & $codeCmd --install-extension $extId 2>&1
-Write-Host ($output | Out-String)
+# NO 2>&1: code.cmd (node) prints DeprecationWarnings to stderr; under
+# ErrorActionPreference='Stop' the 2>&1 merge wraps each line in
+# NativeCommandError and aborts mid-install. Let output flow to the
+# console; rely on $LASTEXITCODE for the success decision.
+& $codeCmd --install-extension $extId
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Extension installed." -ForegroundColor Green

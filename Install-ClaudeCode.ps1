@@ -71,19 +71,40 @@ $env:Path = "$machinePath;$userPath"
 
 # Verify
 $claudeCheck = Get-Command claude -ErrorAction SilentlyContinue
+
+# The official installer sometimes does NOT add ~/.local/bin to the User
+# PATH (observed on corp Win11). The binary exists but is unreachable, so
+# downstream stages (Stage 6 MCP servers, Stage 8 setup-extras) fail with
+# 'claude not found'. If the exe is there but not on PATH, add the folder
+# ourselves -- both to the persistent User PATH (fresh terminals) and to
+# THIS process PATH (so the remaining install stages in this run see it).
+if (-not $claudeCheck) {
+    $localBin  = Join-Path $env:USERPROFILE ".local\bin"
+    $claudeExe = Join-Path $localBin "claude.exe"
+    if (Test-Path $claudeExe) {
+        $curUser = [Environment]::GetEnvironmentVariable("Path", "User")
+        if ($curUser -notlike "*$localBin*") {
+            [Environment]::SetEnvironmentVariable("Path", "$curUser;$localBin", "User")
+            Write-Host "Added $localBin to User PATH (official installer omitted it)." -ForegroundColor Yellow
+        }
+        $env:Path = "$env:Path;$localBin"
+        $claudeCheck = Get-Command claude -ErrorAction SilentlyContinue
+    }
+}
+
 if ($claudeCheck) {
-    $version = & claude --version 2>&1
+    $version = & claude --version
     Write-Host ""
     Write-Host "claude installed: $version" -ForegroundColor Green
     Write-Host "Path: $($claudeCheck.Path)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Next: log in via 'claude auth login' (browser flow)." -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "IMPORTANT: close and re-open PowerShell so PATH is picked up" -ForegroundColor Yellow
-    Write-Host "in fresh terminals (current session is OK)." -ForegroundColor Yellow
+    Write-Host "IMPORTANT: open a fresh terminal later so PATH is picked up everywhere" -ForegroundColor Yellow
+    Write-Host "(this install run already has claude on PATH for the next stages)." -ForegroundColor Yellow
 }
 else {
-    Write-Host "claude not found in PATH after install." -ForegroundColor Yellow
-    Write-Host "Try closing and re-opening PowerShell, then run 'claude --version'." -ForegroundColor Yellow
+    Write-Host "claude.exe not found after install (binary missing, not just PATH)." -ForegroundColor Yellow
+    Write-Host "See manual fallback above; then re-run Install.ps1." -ForegroundColor Yellow
     exit 1
 }
