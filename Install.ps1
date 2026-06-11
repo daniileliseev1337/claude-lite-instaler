@@ -9,9 +9,10 @@ Step-by-step orchestrator. Asks before each stage:
 
   1. Proxy           Set HTTP_PROXY / HTTPS_PROXY for current session.
                      Затем (не интерактивно) копирует proxy-хелперы
-                     (Set-Proxy.ps1, Start-Claude.bat/ps1/ahk) в
-                     ~/.claude/bin/ и создаёт ярлык в Пуске
-                     "Claude (with proxy)". Урок 15.
+                     (Set-Proxy.ps1, Start-Claude.bat/ps1/ahk,
+                     Start-Chrome-Proxy.bat/ps1) в ~/.claude/bin/ и создаёт
+                     ярлыки в Пуске "Claude (with proxy)" и
+                     "Chrome (with proxy)". Урок 15.
   2. VS Code         User installer, silent, %LOCALAPPDATA%\Programs\.
   3. Claude Code CLI Official installer, %USERPROFILE%\.local\bin\.
   4. VS Code ext     anthropic.claude-code from Marketplace.
@@ -126,7 +127,9 @@ $helpers = @(
     "Set-Proxy.cmd",
     "Start-Claude.ps1",
     "Start-Claude.bat",
-    "Start-Claude.ahk"
+    "Start-Claude.ahk",
+    "Start-Chrome-Proxy.ps1",
+    "Start-Chrome-Proxy.bat"
 )
 $copied = 0
 foreach ($h in $helpers) {
@@ -139,26 +142,32 @@ foreach ($h in $helpers) {
 }
 Write-Host "  Скопировано $copied хелперов в $binDir" -ForegroundColor Gray
 
-# Start Menu shortcut to Start-Claude.bat (одним кликом запустить Claude с прокси)
-try {
-    $startMenu = [Environment]::GetFolderPath("Programs")
-    $shortcutPath = Join-Path $startMenu "Claude (with proxy).lnk"
-    if (-not (Test-Path $shortcutPath)) {
-        $startBat = Join-Path $binDir "Start-Claude.bat"
-        if (Test-Path $startBat) {
-            $wsh = New-Object -ComObject WScript.Shell
-            $shortcut = $wsh.CreateShortcut($shortcutPath)
-            $shortcut.TargetPath      = $startBat
-            $shortcut.WorkingDirectory = $env:USERPROFILE
-            $shortcut.IconLocation    = "$env:SystemRoot\System32\cmd.exe,0"
-            $shortcut.Save()
-            Write-Host "  Ярлык Пуск -> 'Claude (with proxy)'" -ForegroundColor Gray
+# Start Menu shortcuts (одним кликом: Claude с прокси / Chrome с прокси)
+$menuShortcuts = @(
+    @{ Name = "Claude (with proxy)"; Bat = "Start-Claude.bat" },
+    @{ Name = "Chrome (with proxy)"; Bat = "Start-Chrome-Proxy.bat" }
+)
+foreach ($ms in $menuShortcuts) {
+    try {
+        $startMenu = [Environment]::GetFolderPath("Programs")
+        $shortcutPath = Join-Path $startMenu "$($ms.Name).lnk"
+        if (-not (Test-Path $shortcutPath)) {
+            $startBat = Join-Path $binDir $ms.Bat
+            if (Test-Path $startBat) {
+                $wsh = New-Object -ComObject WScript.Shell
+                $shortcut = $wsh.CreateShortcut($shortcutPath)
+                $shortcut.TargetPath      = $startBat
+                $shortcut.WorkingDirectory = $env:USERPROFILE
+                $shortcut.IconLocation    = "$env:SystemRoot\System32\cmd.exe,0"
+                $shortcut.Save()
+                Write-Host "  Ярлык Пуск -> '$($ms.Name)'" -ForegroundColor Gray
+            }
+        } else {
+            Write-Host "  Ярлык '$($ms.Name)' уже существует, пропускаю" -ForegroundColor Gray
         }
-    } else {
-        Write-Host "  Ярлык 'Claude (with proxy)' уже существует, пропускаю" -ForegroundColor Gray
+    } catch {
+        Write-Host "  Не удалось создать ярлык '$($ms.Name)' (не критично): $($_.Exception.Message)" -ForegroundColor Yellow
     }
-} catch {
-    Write-Host "  Не удалось создать ярлык в Пуске (не критично): $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 Run-Stage `
