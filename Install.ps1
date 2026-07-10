@@ -129,7 +129,8 @@ $helpers = @(
     "Start-Claude.bat",
     "Start-Claude.ahk",
     "Start-Chrome-Proxy.ps1",
-    "Start-Chrome-Proxy.bat"
+    "Start-Chrome-Proxy.bat",
+    "Make-ProxyShortcuts.ps1"
 )
 $copied = 0
 foreach ($h in $helpers) {
@@ -142,32 +143,52 @@ foreach ($h in $helpers) {
 }
 Write-Host "  Скопировано $copied хелперов в $binDir" -ForegroundColor Gray
 
+# Иконки для ярлыков (лого приложения + бейдж-замок «прокси»)
+$iconDst = Join-Path $binDir "icons"
+$iconSrc = Join-Path $here "icons"
+if (Test-Path $iconSrc) {
+    if (-not (Test-Path $iconDst)) { New-Item -ItemType Directory -Path $iconDst -Force | Out-Null }
+    Copy-Item (Join-Path $iconSrc "*.ico") $iconDst -Force
+    Write-Host "  Иконки скопированы в $iconDst" -ForegroundColor Gray
+}
+
 # Start Menu shortcuts (одним кликом: Claude с прокси / Chrome с прокси)
+# Иконка = лого приложения + бейдж-замок «прокси» (icons/), fallback — cmd.exe.
+# Перезаписываем всегда — при обновлении installer'а иконка/цель обновятся.
 $menuShortcuts = @(
-    @{ Name = "Claude (with proxy)"; Bat = "Start-Claude.bat" },
-    @{ Name = "Chrome (with proxy)"; Bat = "Start-Chrome-Proxy.bat" }
+    @{ Name = "Claude (with proxy)"; Bat = "Start-Claude.bat";       Icon = "claude-proxy.ico" },
+    @{ Name = "Chrome (with proxy)"; Bat = "Start-Chrome-Proxy.bat"; Icon = "chrome-proxy.ico" }
 )
 foreach ($ms in $menuShortcuts) {
     try {
         $startMenu = [Environment]::GetFolderPath("Programs")
         $shortcutPath = Join-Path $startMenu "$($ms.Name).lnk"
-        if (-not (Test-Path $shortcutPath)) {
-            $startBat = Join-Path $binDir $ms.Bat
-            if (Test-Path $startBat) {
-                $wsh = New-Object -ComObject WScript.Shell
-                $shortcut = $wsh.CreateShortcut($shortcutPath)
-                $shortcut.TargetPath      = $startBat
-                $shortcut.WorkingDirectory = $env:USERPROFILE
-                $shortcut.IconLocation    = "$env:SystemRoot\System32\cmd.exe,0"
-                $shortcut.Save()
-                Write-Host "  Ярлык Пуск -> '$($ms.Name)'" -ForegroundColor Gray
-            }
-        } else {
-            Write-Host "  Ярлык '$($ms.Name)' уже существует, пропускаю" -ForegroundColor Gray
+        $startBat = Join-Path $binDir $ms.Bat
+        if (Test-Path $startBat) {
+            $iconFile = Join-Path $iconDst $ms.Icon
+            $wsh = New-Object -ComObject WScript.Shell
+            $shortcut = $wsh.CreateShortcut($shortcutPath)
+            $shortcut.TargetPath       = $startBat
+            $shortcut.WorkingDirectory = $env:USERPROFILE
+            if (Test-Path $iconFile) { $shortcut.IconLocation = $iconFile }
+            else { $shortcut.IconLocation = "$env:SystemRoot\System32\cmd.exe,0" }
+            $shortcut.Save()
+            Write-Host "  Ярлык Пуск -> '$($ms.Name)'" -ForegroundColor Gray
         }
     } catch {
-        Write-Host "  Не удалось создать ярлык '$($ms.Name)' (не критично): $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "  Не удалось создать ярлык Пуск '$($ms.Name)' (не критично): $($_.Exception.Message)" -ForegroundColor Yellow
     }
+}
+
+# Ярлыки на РАБОЧИЙ СТОЛ (Claude / Chrome с прокси) — через Make-ProxyShortcuts.ps1
+try {
+    $mk = Join-Path $binDir "Make-ProxyShortcuts.ps1"
+    if (Test-Path $mk) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $mk
+        Write-Host "  Ярлыки на рабочем столе созданы" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "  Не удалось создать ярлыки рабочего стола (не критично): $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 Run-Stage `

@@ -70,42 +70,24 @@ if (-not $chrome -or -not (Test-Path $chrome)) {
     exit 1
 }
 
-# === Chrome уже запущен? Флаги не применятся ========================
-$running = Get-Process chrome -ErrorAction SilentlyContinue
-if ($running -and -not $OwnProfile) {
-    Write-Host ""
-    Write-Host "Chrome уже запущен — прокси-флаги НЕ применятся к работающему процессу." -ForegroundColor Yellow
-    Write-Host "  [1] Я сам закрою Chrome, потом продолжить"
-    Write-Host "  [2] Открыть отдельный прокси-профиль (без закладок основного)"
-    Write-Host "  [3] Отмена"
-    $choice = Read-Host "Выбор (1/2/3)"
-    switch ($choice) {
-        '1' {
-            Read-Host "Закрой все окна Chrome и нажми Enter"
-            if (Get-Process chrome -ErrorAction SilentlyContinue) {
-                Write-Host "Chrome всё ещё запущен — выходим без запуска." -ForegroundColor Red
-                exit 1
-            }
-        }
-        '2' { $OwnProfile = $true }
-        default { Write-Host "Отмена."; exit 0 }
-    }
-}
+# === Постоянный прокси-профиль (всегда) =============================
+# Запускаем в ВЫДЕЛЕННОМ user-data-dir. Зачем:
+#   - не конфликтует с основным Chrome: отдельный процесс, --proxy-server
+#     применяется, даже если обычный Chrome уже открыт (не нужно его закрывать);
+#   - Chrome ЗАПОМИНАЕТ логин/пароль прокси (Basic-auth) в этом профиле —
+#     ввести ОДИН раз в попапе, дальше не спрашивает. Это и есть «пароль один раз».
+$profileDir = Join-Path $env:LOCALAPPDATA 'Google\ChromeProxyProfile'
 
 # === Запуск =========================================================
 $chromeArgs = @(
     "--proxy-server=http://$hostPort",
-    '--proxy-bypass-list=github.com;*.github.com;*.githubusercontent.com;<local>'
+    '--proxy-bypass-list=github.com;*.github.com;*.githubusercontent.com;<local>',
+    "--user-data-dir=$profileDir"
 )
-if ($OwnProfile) {
-    $chromeArgs += "--user-data-dir=$env:LOCALAPPDATA\Google\ChromeProxyProfile"
-}
 
 Start-Process -FilePath $chrome -ArgumentList $chromeArgs
 Write-Host ""
 Write-Host "Chrome запущен через прокси http://$hostPort" -ForegroundColor Green
-Write-Host "Логин/пароль прокси браузер спросит сам при первом запросе." -ForegroundColor Gray
-if ($OwnProfile) {
-    Write-Host "Профиль: отдельный (ChromeProxyProfile)." -ForegroundColor Gray
-}
+Write-Host "Профиль: выделенный ChromeProxyProfile (отдельно от основного Chrome)." -ForegroundColor Gray
+Write-Host "Логин/пароль прокси Chrome спросит ОДИН раз и запомнит в этом профиле." -ForegroundColor Gray
 exit 0

@@ -118,9 +118,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\Apply-ClaudeMd.ps1          # только sync ~/.claude/ с claude-base
 ```
 
-## Прокси в каждой новой сессии
+## Прокси: пароль один раз, дальше автоматически
 
-`Set-Proxy.ps1` ставит env-переменные **только в текущем терминале и его дочерних процессах**. Пароль в системе не оседает.
+`Set-Proxy.ps1` ставит env-переменные **только в текущем терминале и его дочерних процессах**. host:port и login лежат в `~/.claude-proxy.json`, а **пароль — отдельно и зашифрованно (DPAPI)** в `~/.claude-proxy.cred`: расшифровать может ТОЛЬКО этот Windows-пользователь на ЭТОЙ машине, в открытом виде на диск не ложится. Ввёл пароль один раз → следующие запуски не спрашивают.
 
 ```powershell
 # Способ 1: двойной клик по Set-Proxy.cmd
@@ -129,10 +129,22 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 & "$env:USERPROFILE\Desktop\claude-lite-instaler\Set-Proxy.ps1"
 
 # Параметры:
-.\Set-Proxy.ps1 -Off      # снять прокси
-.\Set-Proxy.ps1 -Reset    # удалить сохранённый конфиг
-.\Set-Proxy.ps1 -NoSave   # не сохранять host/login
+.\Set-Proxy.ps1 -Off             # снять прокси из текущей сессии
+.\Set-Proxy.ps1 -ResetPassword   # забыть пароль, спросить один раз заново (смена пароля прокси)
+.\Set-Proxy.ps1 -Reset           # удалить весь сохранённый конфиг (host + login + пароль)
+.\Set-Proxy.ps1 -NoSave          # не сохранять ничего на диск
 ```
+
+### Ярлыки запуска
+
+Installer создаёт ярлыки **на рабочем столе** и **в Пуске** — «Claude (with proxy)» и «Chrome (with proxy)» с фирменными иконками (лого приложения + бейдж-замок «прокси»). Пересоздать вручную:
+
+```powershell
+& "$env:USERPROFILE\.claude\bin\Make-ProxyShortcuts.ps1"
+```
+
+- **Claude** — двойной клик → прокси (пароль подхватится сам из DPAPI) → выбор CLI / VSCode / Desktop.
+- **Chrome** — отдельный постоянный прокси-профиль: логин/пароль прокси браузер спросит **один раз** и запомнит; с обычным Chrome не конфликтует.
 
 ## Corporate proxy
 

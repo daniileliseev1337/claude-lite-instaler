@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Sets HTTP_PROXY / HTTPS_PROXY for the current PowerShell session.
 
@@ -34,12 +34,17 @@ Scope:
 param(
     [switch]$Off,
     [switch]$Reset,
+    [switch]$ResetPassword,
     [switch]$NoSave
 )
 
 $ErrorActionPreference = "Stop"
 
 $configPath = Join-Path $env:USERPROFILE ".claude-proxy.json"
+# Пароль хранится зашифрованным через DPAPI (ConvertFrom-SecureString без -Key):
+# расшифровать может ТОЛЬКО этот Windows-пользователь на ЭТОЙ машине. В открытом
+# виде на диск НЕ ложится. Ввести один раз -> дальше запуски без вопроса.
+$credPath   = Join-Path $env:USERPROFILE ".claude-proxy.cred"
 
 # === -Off: clear and exit ============================================
 if ($Off) {
@@ -51,9 +56,21 @@ if ($Off) {
 }
 
 # === -Reset: drop saved config ======================================
-if ($Reset -and (Test-Path $configPath)) {
-    Remove-Item $configPath -Force
-    Write-Host "Saved proxy config removed: $configPath" -ForegroundColor Yellow
+if ($Reset) {
+    if (Test-Path $configPath) {
+        Remove-Item $configPath -Force
+        Write-Host "Saved proxy config removed: $configPath" -ForegroundColor Yellow
+    }
+    if (Test-Path $credPath) {
+        Remove-Item $credPath -Force
+        Write-Host "Saved password removed: $credPath" -ForegroundColor Yellow
+    }
+}
+
+# === -ResetPassword: drop only the saved password ===================
+if ($ResetPassword -and (Test-Path $credPath)) {
+    Remove-Item $credPath -Force
+    Write-Host "Saved password removed (will ask once): $credPath" -ForegroundColor Yellow
 }
 
 # === Load or ask host:port + username ===============================
@@ -90,8 +107,24 @@ if (-not $user) {
     }
 }
 
-# === Ask for password (inline in console, no popup window) =========
-$securePass = Read-Host "Proxy password for $user@$hostPort" -AsSecureString
+# === Password: load from DPAPI store, or ask once =================
+# Приоритет: сохранённый DPAPI-пароль -> иначе спросить inline (без popup).
+$securePass  = $null
+$pwFromStore = $false
+if ((Test-Path $credPath) -and -not $ResetPassword) {
+    try {
+        $securePass  = (Get-Content $credPath -Raw).Trim() | ConvertTo-SecureString -ErrorAction Stop
+        $pwFromStore = $true
+        Write-Host "Password loaded from encrypted store (DPAPI)." -ForegroundColor Gray
+    }
+    catch {
+        Write-Host "Saved password can't be decrypted (different user/machine?). Asking again." -ForegroundColor Yellow
+        $securePass = $null
+    }
+}
+if (-not $securePass) {
+    $securePass = Read-Host "Proxy password for $user@$hostPort" -AsSecureString
+}
 if (-not $securePass -or $securePass.Length -eq 0) {
     Write-Host "Empty password, aborting." -ForegroundColor Red
     exit 1
@@ -114,11 +147,14 @@ $webProxy = New-Object System.Net.WebProxy("http://${hostPort}", $true)
 $webProxy.Credentials = New-Object System.Net.NetworkCredential($user, $pw)
 [System.Net.WebRequest]::DefaultWebProxy = $webProxy
 
-# Clear plaintext password from memory after use
+# Clear plaintext password from memory after use.
+# $securePass намеренно НЕ обнуляем здесь — нужен ниже для сохранения в DPAPI-store.
 $pw = $null
 $pwEncoded = $null
-$securePass = $null
 [System.GC]::Collect()
+
+# флаг для решения «сохранять ли пароль» (не сохраняем при 407 Proxy Auth)
+$proxyAuthFailed = $false
 
 Write-Host ""
 Write-Host "Proxy set for current session: $hostPort (user: $user)" -ForegroundColor Green
@@ -141,9 +177,10 @@ try {
 catch {
     Write-Host " FAILED" -ForegroundColor Red
     Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+    if ($_.Exception.Message -match '407') { $proxyAuthFailed = $true }
     Write-Host ""
     Write-Host "  If error is 407 'Proxy Authentication Required':" -ForegroundColor Yellow
-    Write-Host "    - wrong username or password (re-run: .\Set-Proxy.ps1 -Reset)" -ForegroundColor Yellow
+    Write-Host "    - wrong username or password (re-run: .\Set-Proxy.ps1 -ResetPassword)" -ForegroundColor Yellow
     Write-Host "    - proxy uses NTLM or Negotiate, not Basic (this script supports only Basic)" -ForegroundColor Yellow
     Write-Host "  Stages 2/3/5 will fail until proxy auth works. Continue at your own risk." -ForegroundColor Yellow
 }
@@ -158,6 +195,27 @@ if (-not $NoSave -and -not (Test-Path $configPath)) {
     Set-Content -Path $configPath -Value $cfg -Encoding utf8
     Write-Host "Saved host and user to: $configPath (no password)" -ForegroundColor Gray
 }
+
+# === Save password encrypted (DPAPI) — once, if newly entered =======
+# Только если пароль был ВВЕДЁН в этот раз (не взят из store) и auth не упал (407).
+if (-not $pwFromStore -and -not $NoSave) {
+    if ($proxyAuthFailed) {
+        Write-Host "Proxy auth failed (407) - password NOT saved. Re-run and enter the correct one." -ForegroundColor Yellow
+    }
+    else {
+        try {
+            # hex-шифр DPAPI — чистый ASCII; НЕ utf8 (BOM ломает обратное ConvertTo-SecureString)
+            $securePass | ConvertFrom-SecureString | Set-Content -Path $credPath -Encoding ASCII
+            Write-Host "Password saved encrypted (DPAPI): $credPath" -ForegroundColor Green
+            Write-Host "Next launches won't ask for it. Change proxy pass -> Set-Proxy.ps1 -ResetPassword" -ForegroundColor Gray
+        }
+        catch {
+            Write-Host "Could not save encrypted password: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+}
+$securePass = $null
+[System.GC]::Collect()
 
 # === Quick check ====================================================
 Write-Host ""
