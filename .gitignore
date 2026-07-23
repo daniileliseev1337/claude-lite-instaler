@@ -1,0 +1,5 @@
+.work/
+dist/
+*.tmp
+*.bak
+
