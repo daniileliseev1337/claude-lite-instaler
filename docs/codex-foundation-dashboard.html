@@ -163,6 +163,10 @@
       color: #9be6ba;
     }
 
+    .status--hold {
+      color: #ffd58a;
+    }
+
     .status--blocked {
       color: #ffaaa3;
     }
@@ -615,6 +619,7 @@
       </p>
       <div class="status-strip" aria-label="Текущий статус выпуска">
         <span class="status status--pass">FOUNDATION SYNTHETIC: PASS</span>
+        <span class="status status--hold">EMPLOYEE PACKAGE: BLOCKED</span>
         <span class="status status--blocked">FULL RELEASE: NOT PASS</span>
       </div>
     </header>
@@ -636,6 +641,29 @@
       </nav>
 
       <main>
+        <section class="card" id="release-gate">
+          <div class="card__head">
+            <span class="card__number">G</span>
+            <div>
+              <p class="eyebrow">Текущий release-gate</p>
+              <h2>Движок проверен, рабочий ZIP ещё не выпущен</h2>
+            </div>
+          </div>
+          <p>
+            Synthetic fake-home acceptance пройден в PowerShell 7 и 5.1.
+            Но в проекте пока нет утверждённого immutable Codex-base source и
+            frozen evidence inventory для реального payload.
+          </p>
+          <div class="callout">
+            <div>
+              <strong>BLOCKED_APPROVED_FOUNDATION_SOURCE.</strong>
+              Не раздавайте сотрудникам <code>tests/fixtures</code>,
+              <code>.work</code> или вручную собранный архив. Команды ниже
+              применяются только к будущему ZIP с опубликованным SHA-256.
+            </div>
+          </div>
+        </section>
+
         <section class="card" id="before">
           <div class="card__head">
             <span class="card__number">00</span>

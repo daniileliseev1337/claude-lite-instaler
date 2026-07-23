@@ -10,6 +10,7 @@ It 'ships one offline mobile-ready employee dashboard' {
   Assert-True $Html.Contains('.\install.ps1 rollback')
   Assert-True $Html.Contains('FULL RELEASE: NOT PASS')
   Assert-True $Html.Contains('FOUNDATION SYNTHETIC: PASS')
+  Assert-True $Html.Contains('BLOCKED_APPROVED_FOUNDATION_SOURCE')
   Assert-False ($Html -match '(?i)https?://')
   Assert-False ($Html -match '(?i)<script[^>]+src=')
   Assert-False ($Html -match 'TODO|TBD|FIXME|\{\{')
@@ -28,5 +29,6 @@ It 'publishes the synthetic pass without overstating full release' {
   $Readme = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $ReadmePath))
   Assert-True $Readme.Contains('FOUNDATION_SYNTHETIC_PASS')
   Assert-True $Readme.Contains('FULL_RELEASE_NOT_PASS')
+  Assert-True $Readme.Contains('BLOCKED_APPROVED_FOUNDATION_SOURCE')
   Assert-False $Readme.Contains('FULL_RELEASE_PASS')
 }

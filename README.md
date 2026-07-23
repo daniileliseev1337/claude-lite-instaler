@@ -12,6 +12,10 @@ Current release status: `FOUNDATION_SYNTHETIC_PASS`;
 The synthetic verdict covers only isolated fake-home acceptance. It does not
 authorize a DANIILPC canary or an employee rollout.
 
+Real employee package status: `BLOCKED_APPROVED_FOUNDATION_SOURCE`. The
+repository does not contain an approved immutable rendered Codex-base source
+and frozen component evidence inventory, so no production ZIP is published.
+
 ## Development commands
 
 ```powershell
@@ -23,3 +27,5 @@ pwsh -NoProfile -File .\tools\run-foundation-acceptance.ps1
 
 Employee operations are documented in
 [`docs/FOUNDATION-OPERATIONS.md`](docs/FOUNDATION-OPERATIONS.md).
+The offline visual guide is
+[`docs/codex-foundation-dashboard.html`](docs/codex-foundation-dashboard.html).
