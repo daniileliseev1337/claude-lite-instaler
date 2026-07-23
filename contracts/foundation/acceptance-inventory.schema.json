@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llmbase.local/contracts/foundation/acceptance-inventory.schema.json",
+  "title": "Codex Foundation acceptance inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_identity",
+    "environment",
+    "components",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source_identity": {
+      "$ref": "release-manifest.schema.json#/$defs/source_identity"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release_id",
+        "built_at_utc",
+        "installer_protocol_version",
+        "compatible",
+        "compatibility"
+      ],
+      "properties": {
+        "release_id": {
+          "type": "string"
+        },
+        "built_at_utc": {
+          "type": "string"
+        },
+        "installer_protocol_version": {
+          "type": "string"
+        },
+        "compatible": {
+          "type": "boolean"
+        },
+        "compatibility": {
+          "$ref": "release-manifest.schema.json#/$defs/compatibility"
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "component_type",
+        "source_relative_path",
+        "destination_relative_path",
+        "sha256",
+        "bytes",
+        "dependencies",
+        "acceptance_verdict",
+        "evidence_ids",
+        "compatible"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string"
+        },
+        "component_type": {
+          "enum": [
+            "core",
+            "agent",
+            "skill",
+            "hook",
+            "mcp",
+            "plugin"
+          ]
+        },
+        "source_relative_path": {
+          "type": "string"
+        },
+        "destination_relative_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "acceptance_verdict": {
+          "enum": [
+            "PASS",
+            "NOT_TESTED",
+            "BLOCKED",
+            "FAIL"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "compatible": {
+          "type": "boolean"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "component_id",
+        "source_identity",
+        "payload_sha256",
+        "verdict"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        },
+        "component_id": {
+          "type": "string"
+        },
+        "source_identity": {
+          "$ref": "release-manifest.schema.json#/$defs/source_identity"
+        },
+        "payload_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "verdict": {
+          "enum": [
+            "PASS",
+            "NOT_TESTED",
+            "BLOCKED",
+            "FAIL"
+          ]
+        }
+      }
+    }
+  }
+}
+
