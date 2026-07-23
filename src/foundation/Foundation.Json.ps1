@@ -8,6 +8,20 @@ function Get-FoundationSha256Hex {
   }
 }
 
+function Sort-FoundationObjectsOrdinal {
+  param(
+    [AllowEmptyCollection()][object[]]$Items,
+    [Parameter(Mandatory = $true)][string]$Property
+  )
+  $Values = [string[]]@($Items | ForEach-Object { [string]$_.$Property })
+  [Array]::Sort($Values, [StringComparer]::Ordinal)
+  return @(
+    foreach ($Value in $Values) {
+      $Items | Where-Object { [string]$_.$Property -ceq $Value } | Select-Object -First 1
+    }
+  )
+}
+
 function Get-Sha256Lower {
   param([Parameter(Mandatory = $true)][string]$Path)
   $Item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
@@ -198,7 +212,12 @@ function Read-JsonFileStrict {
   try { $Text = $Utf8.GetString($Bytes) }
   catch { Throw-FoundationError -Code 'INVALID_PACKAGE' -Message "JSON is not strict UTF-8: $Path" }
   Assert-FoundationJsonLexicallyStrict $Text
-  try { return ConvertFrom-Json -InputObject $Text -ErrorAction Stop }
+  try {
+    $ConvertCommand = Get-Command ConvertFrom-Json -ErrorAction Stop
+    if ($ConvertCommand.Parameters.ContainsKey('DateKind')) {
+      return ConvertFrom-Json -InputObject $Text -DateKind String -ErrorAction Stop
+    }
+    return ConvertFrom-Json -InputObject $Text -ErrorAction Stop
+  }
   catch { Throw-FoundationError -Code 'INVALID_PACKAGE' -Message "JSON parse failed: $Path" }
 }
-

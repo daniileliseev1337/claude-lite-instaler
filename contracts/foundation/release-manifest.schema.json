@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llmbase.local/contracts/foundation/release-manifest.schema.json",
+  "title": "Codex Foundation release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "channel",
+    "built_at_utc",
+    "vendor",
+    "source_identity",
+    "installer_protocol_version",
+    "compatibility",
+    "files",
+    "components",
+    "counts",
+    "full_release_verdict"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "release_id": {
+      "type": "string",
+      "pattern": "^foundation-[a-z0-9][a-z0-9.-]{0,79}$"
+    },
+    "channel": {
+      "const": "foundation-canary"
+    },
+    "built_at_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "vendor": {
+      "const": "codex"
+    },
+    "source_identity": {
+      "$ref": "#/$defs/source_identity"
+    },
+    "installer_protocol_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "compatibility": {
+      "$ref": "#/$defs/compatibility"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "counts": {
+      "$ref": "#/$defs/counts"
+    },
+    "full_release_verdict": {
+      "const": "NOT_PASS"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "portable_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^[^\\\\/:*?\"<>|]+(?:/[^\\\\/:*?\"<>|]+)*$"
+    },
+    "source_identity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "commit",
+            "tree"
+          ],
+          "properties": {
+            "kind": {
+              "const": "git"
+            },
+            "commit": {
+              "$ref": "#/$defs/git_id"
+            },
+            "tree": {
+              "$ref": "#/$defs/git_id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "content_sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "content-sha256"
+            },
+            "content_sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        }
+      ]
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "windows",
+        "powershell",
+        "codex_versions"
+      ],
+      "properties": {
+        "windows": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "10",
+              "11"
+            ]
+          }
+        },
+        "powershell": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "5.1",
+              "7"
+            ]
+          }
+        },
+        "codex_versions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+          }
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "role",
+        "component_id",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/portable_path"
+        },
+        "role": {
+          "enum": [
+            "installer",
+            "schema",
+            "doc",
+            "component"
+          ]
+        },
+        "component_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "component_type",
+        "source_identity",
+        "payload_relative_path",
+        "destination_relative_path",
+        "sha256",
+        "bytes",
+        "dependencies",
+        "acceptance_verdict",
+        "evidence_ids",
+        "activation",
+        "quarantine_reason"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$"
+        },
+        "component_type": {
+          "enum": [
+            "core",
+            "agent",
+            "skill",
+            "hook",
+            "mcp",
+            "plugin"
+          ]
+        },
+        "source_identity": {
+          "$ref": "#/$defs/source_identity"
+        },
+        "payload_relative_path": {
+          "$ref": "#/$defs/portable_path"
+        },
+        "destination_relative_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "acceptance_verdict": {
+          "enum": [
+            "PASS",
+            "NOT_TESTED",
+            "BLOCKED",
+            "FAIL"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "activation": {
+          "enum": [
+            "ACTIVE_ELIGIBLE",
+            "QUARANTINE_NOT_TESTED",
+            "QUARANTINE_BLOCKED",
+            "QUARANTINE_FAIL",
+            "QUARANTINE_DEPENDENCY",
+            "QUARANTINE_UNSUPPORTED_ACTIVATION",
+            "QUARANTINE_INCOMPATIBLE_VERSION"
+          ]
+        },
+        "quarantine_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "count_map": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_type",
+        "by_verdict",
+        "by_activation"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_type": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_verdict": {
+          "$ref": "#/$defs/count_map"
+        },
+        "by_activation": {
+          "$ref": "#/$defs/count_map"
+        }
+      }
+    }
+  }
+}
+

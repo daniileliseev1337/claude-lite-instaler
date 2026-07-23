@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "release_id": "foundation-fixture-0001",
+  "channel": "foundation-canary",
+  "built_at_utc": "2026-07-23T00:00:00Z",
+  "vendor": "codex",
+  "source_identity": {
+    "kind": "git",
+    "commit": "1111111111111111111111111111111111111111",
+    "tree": "2222222222222222222222222222222222222222"
+  },
+  "installer_protocol_version": "1.0.0",
+  "compatibility": {
+    "windows": [
+      "10",
+      "11"
+    ],
+    "powershell": [
+      "5.1",
+      "7"
+    ],
+    "codex_versions": [
+      "0.145.0-alpha.18"
+    ]
+  },
+  "files": [],
+  "components": [],
+  "counts": {
+    "total": 0,
+    "by_type": {},
+    "by_verdict": {},
+    "by_activation": {}
+  },
+  "full_release_verdict": "NOT_PASS"
+}
+
