@@ -1,5 +1,5 @@
 function Get-FoundationSha256Hex {
-  param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+  param([Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$Bytes)
   $Algorithm = [Security.Cryptography.SHA256]::Create()
   try {
     return -join ($Algorithm.ComputeHash($Bytes) | ForEach-Object { $_.ToString('x2') })

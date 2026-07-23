@@ -11,6 +11,11 @@ if (Test-Path -LiteralPath $SourceRoot) {
     ForEach-Object { . $_.FullName }
 }
 
+$SupportPath = Join-Path $PSScriptRoot 'TestSupport.ps1'
+if (Test-Path -LiteralPath $SupportPath) {
+  . $SupportPath
+}
+
 $Selected = if ($Files.Count) {
   $Files | ForEach-Object { Get-Item -LiteralPath $_ }
 } else {
@@ -21,4 +26,3 @@ $Selected = if ($Files.Count) {
 $Selected | ForEach-Object { . $_.FullName }
 Write-Output "RESULT passed=$script:Passed failed=$script:Failed"
 if ($script:Failed) { exit 1 }
-
