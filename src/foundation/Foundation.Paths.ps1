@@ -65,6 +65,39 @@ function Assert-SafeExistingDirectory {
   }
 }
 
+function Assert-SafeManagedDestinationAncestors {
+  param(
+    [Parameter(Mandatory = $true)][string]$Destination,
+    [Parameter(Mandatory = $true)][string]$UserProfile
+  )
+  $ProfileRoot = [IO.Path]::GetFullPath($UserProfile)
+  $Absolute = [IO.Path]::GetFullPath($Destination)
+  Assert-SafeExistingDirectory $ProfileRoot
+  if (-not $Absolute.StartsWith(
+      $ProfileRoot + [IO.Path]::DirectorySeparatorChar,
+      [StringComparison]::OrdinalIgnoreCase)) {
+    Throw-FoundationError -Code 'UNSAFE_PATH' -Message 'Managed destination escaped profile'
+  }
+  $Parent = Split-Path -Parent $Absolute
+  $RelativeParent = $Parent.Substring($ProfileRoot.Length).TrimStart('\')
+  $Cursor = $ProfileRoot
+  if (-not [string]::IsNullOrEmpty($RelativeParent)) {
+    foreach ($Segment in @($RelativeParent.Split('\'))) {
+      $Cursor = Join-Path $Cursor $Segment
+      if (-not (Test-Path -LiteralPath $Cursor)) { break }
+      Assert-SafeExistingDirectory $Cursor
+    }
+  }
+  if (Test-Path -LiteralPath $Absolute) {
+    $Item = Get-Item -LiteralPath $Absolute -Force -ErrorAction Stop
+    if ($Item.PSIsContainer) {
+      Assert-SafeExistingDirectory $Absolute
+    } elseif ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+      Throw-FoundationError -Code 'UNSAFE_PATH' -Message 'Managed file is a reparse point'
+    }
+  }
+}
+
 function Get-FoundationPayloadDigest {
   param([Parameter(Mandatory = $true)][string]$Path)
   $RootItem = Get-Item -LiteralPath $Path -Force -ErrorAction Stop

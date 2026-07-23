@@ -215,12 +215,22 @@ function Test-FoundationPackage {
   }
   $Actual = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
   $Root = [IO.Path]::GetFullPath($PackageRoot)
-  foreach ($File in @(Get-ChildItem -LiteralPath $Root -Recurse -File -Force)) {
-    if ($File.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-      Throw-FoundationError -Code 'UNSAFE_PATH' -Message 'Package file is a reparse point'
+  $Pending = [Collections.Generic.Queue[string]]::new()
+  $Pending.Enqueue($Root)
+  while ($Pending.Count -gt 0) {
+    $Directory = $Pending.Dequeue()
+    Assert-SafeExistingDirectory $Directory
+    foreach ($Child in @(Get-ChildItem -LiteralPath $Directory -Force -ErrorAction Stop)) {
+      if ($Child.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        Throw-FoundationError -Code 'UNSAFE_PATH' -Message 'Package contains a reparse point'
+      }
+      if ($Child.PSIsContainer) {
+        $Pending.Enqueue($Child.FullName)
+        continue
+      }
+      $Relative = $Child.FullName.Substring($Root.Length).TrimStart('\').Replace('\', '/')
+      $null = $Actual.Add($Relative)
     }
-    $Relative = $File.FullName.Substring($Root.Length).TrimStart('\').Replace('\', '/')
-    $null = $Actual.Add($Relative)
   }
   if ($Actual.Count -ne $Expected.Count -or @($Actual | Where-Object { -not $Expected.Contains($_) }).Count -gt 0) {
     Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Package contains missing or extra files'

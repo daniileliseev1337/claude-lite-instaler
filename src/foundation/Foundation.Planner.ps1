@@ -105,6 +105,8 @@ function New-FoundationPlan {
   $Verification = Test-FoundationPackage $PackageRoot $Manifest
   $ProfileRoot = [IO.Path]::GetFullPath($UserProfile)
   $LocalRoot = [IO.Path]::GetFullPath($LocalAppData)
+  Assert-SafeExistingDirectory $ProfileRoot
+  Assert-SafeExistingDirectory $LocalRoot
   $Rows = @()
   $FileOperations = @()
   $Blockers = @()
@@ -142,6 +144,7 @@ function New-FoundationPlan {
     }
     $null = $NextActiveIds.Add([string]$Component.component_id)
     $DestinationRoot = Resolve-ManagedDestination $Component.destination_relative_path $ProfileRoot
+    Assert-SafeManagedDestinationAncestors $DestinationRoot $ProfileRoot
     $PayloadFiles = @(Get-FoundationComponentPayloadFiles $Manifest $Component)
     $CurrentComponent = $StateComponents[[string]$Component.component_id]
     $ComponentOperations = @()
@@ -153,6 +156,7 @@ function New-FoundationPlan {
       } else {
         foreach ($File in $PayloadFiles) {
           $Destination = Resolve-ManagedDestination $File.destination_relative_path $ProfileRoot
+          Assert-SafeManagedDestinationAncestors $Destination $ProfileRoot
           $Payload = Join-Path $PackageRoot ($File.payload_relative_path.Replace('/', '\'))
           $ComponentOperations += [pscustomobject][ordered]@{
             component_id = $Component.component_id
@@ -182,6 +186,7 @@ function New-FoundationPlan {
       foreach ($File in $PayloadFiles) {
         $null = $NextDestinations.Add([string]$File.destination_relative_path)
         $Destination = Resolve-ManagedDestination $File.destination_relative_path $ProfileRoot
+        Assert-SafeManagedDestinationAncestors $Destination $ProfileRoot
         $Payload = Join-Path $PackageRoot ($File.payload_relative_path.Replace('/', '\'))
         $CurrentFile = $StateFiles[[string]$File.destination_relative_path]
         if ($null -eq $CurrentFile) {
@@ -302,4 +307,3 @@ function Get-FoundationPlanFingerprint {
     [Text.UTF8Encoding]::new($false).GetBytes((ConvertTo-FoundationCanonicalJson $Projection))
   )
 }
-

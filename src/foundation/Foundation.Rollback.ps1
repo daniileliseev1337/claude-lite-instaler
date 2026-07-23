@@ -90,6 +90,35 @@ function Open-FoundationRollbackJournal {
   }
 }
 
+function Remove-FoundationInterruptedStagingFiles {
+  param(
+    [Parameter(Mandatory = $true)][string]$UserProfile,
+    [Parameter(Mandatory = $true)][string]$LocalAppData,
+    [Parameter(Mandatory = $true)]$Journal,
+    [Parameter(Mandatory = $true)]$Snapshot
+  )
+  foreach ($Row in @($Snapshot.rows)) {
+    $Destination = Resolve-ManagedDestination `
+      $Row.destination_relative_path $UserProfile
+    $Parent = Split-Path -Parent $Destination
+    $Name = [IO.Path]::GetFileName($Destination)
+    $Staged = Join-Path $Parent (
+      ".$Name.foundation-$($Journal.transaction_id).tmp"
+    )
+    if (-not (Test-Path -LiteralPath $Staged)) { continue }
+    Assert-SafeExistingDirectory $Parent
+    $Item = Get-Item -LiteralPath $Staged -Force -ErrorAction Stop
+    if ($Item.PSIsContainer -or
+        ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        (Get-Sha256Lower $Staged) -cne $Row.installed_sha256) {
+      Write-FoundationRecoveryMetadata $LocalAppData $Row 'ROLLBACK_CONFLICT'
+      Throw-FoundationError -Code 'ROLLBACK_CONFLICT' `
+        -Message "Staging file changed: $($Row.component_id)"
+    }
+    Remove-Item -LiteralPath $Staged -Force
+  }
+}
+
 function Invoke-FoundationRollback {
   param(
     [Parameter(Mandatory = $true)][string]$UserProfile,
@@ -110,6 +139,10 @@ function Invoke-FoundationRollback {
   }
   $SnapshotContext = Read-FoundationSnapshot $LocalAppData $SnapshotId
   $Snapshot = $SnapshotContext.snapshot
+  if ($Pending) {
+    Remove-FoundationInterruptedStagingFiles $UserProfile $LocalAppData `
+      $ExistingJournal $Snapshot
+  }
   $AppliedCreated = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
   $AppliedUpdated = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
   if ($Pending) {
