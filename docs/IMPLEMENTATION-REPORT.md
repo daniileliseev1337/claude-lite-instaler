@@ -38,15 +38,16 @@ installation was changed.
 
 The latest interactive development run completed in both shells:
 
-- PowerShell 7.6.1: 115/115 tests PASS;
-- Windows PowerShell 5.1.26100.6725: 115/115 tests PASS;
+- PowerShell 7.6.1: 116/116 tests PASS;
+- Windows PowerShell 5.1.26100.6725: 116/116 tests PASS;
 - side-by-side Claude/Codex/OpenCode fake-home install: PASS;
 - install and rollback interruption matrices plus byte-exact recovery: PASS;
 - bundle determinism and external-process denylist: PASS;
 - seeded secret scan: PASS;
 - source-tree identity binding and rendered-target map rejection tests: PASS.
+- acceptance clean-worktree rejection and committed-tree binding: PASS.
 
-These 115/115 observations are not yet retained as immutable acceptance
+These 116/116 observations are not yet retained as immutable acceptance
 evidence. The final handoff must cite a fresh acceptance attempt after the
 final branch commit. A test run against uncommitted files is useful
 development evidence, but it is not release evidence.

@@ -108,6 +108,32 @@ function Test-AcceptanceSecretScan {
   return $true
 }
 
+$RepoStatus = @(
+  & git -C $RepoRoot status --porcelain=v1 --untracked-files=all 2>$null
+)
+if ($LASTEXITCODE -ne 0) {
+  Throw-FoundationError -Code 'ACCEPTANCE_GIT_STATE_UNKNOWN' `
+    -Message 'Acceptance requires a readable Git worktree'
+}
+if ($RepoStatus.Count -ne 0) {
+  Throw-FoundationError -Code 'DIRTY_ACCEPTANCE_REPO' `
+    -Message 'Acceptance requires a clean committed worktree'
+}
+$RepoCommit = [string](
+  & git -C $RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1
+)
+$RepoTree = [string](
+  & git -C $RepoRoot rev-parse 'HEAD^{tree}' 2>$null |
+    Select-Object -First 1
+)
+if (
+  $RepoCommit -notmatch '^[0-9a-f]{40}$' -or
+  $RepoTree -notmatch '^[0-9a-f]{40}$'
+) {
+  Throw-FoundationError -Code 'ACCEPTANCE_GIT_STATE_UNKNOWN' `
+    -Message 'Acceptance requires one committed Git tree'
+}
+
 $AcceptanceBase = Join-Path $RepoRoot '.work\acceptance'
 New-FoundationSafeDirectory $AcceptanceBase
 $AttemptId = New-FoundationRandomId
@@ -265,17 +291,14 @@ $FoundationPass = (
   $Ps7Pass -and $Ps51Pass -and $BundlePass -and
   $SecurityPass -and $E2EPass -and $SecretPass
 )
-$RepoCommit = [string](
-  & git -C $RepoRoot rev-parse HEAD 2>$null | Select-Object -First 1
-)
-if ($RepoCommit -notmatch '^[0-9a-f]{40}$') { $RepoCommit = 'UNKNOWN' }
-
 $Result = [pscustomobject][ordered]@{
   schema_version = 1
   kind = 'foundation_synthetic_acceptance_safe'
   attempt_id = $AttemptId
   generated_at_utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
   repo_commit = $RepoCommit
+  repo_tree = $RepoTree
+  repo_worktree_clean = $true
   release_id = $ReleaseId
   shells = [pscustomobject][ordered]@{
     ps7 = $Ps7.version

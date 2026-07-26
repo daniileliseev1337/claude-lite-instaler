@@ -221,3 +221,12 @@ It 'ships a bounded dual-shell synthetic acceptance runner' {
   Assert-False ($Text -match '(?i)Get-ChildItem\s+Env:')
   Assert-False ($Text -match '(?i)\$env:')
 }
+
+It 'binds acceptance evidence to one clean committed tree' {
+  $Runner = Join-Path $PSScriptRoot '..\tools\run-foundation-acceptance.ps1'
+  $Text = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $Runner))
+  Assert-True $Text.Contains('status --porcelain=v1 --untracked-files=all')
+  Assert-True $Text.Contains('repo_worktree_clean')
+  Assert-True $Text.Contains('repo_tree')
+  Assert-True $Text.Contains('DIRTY_ACCEPTANCE_REPO')
+}
