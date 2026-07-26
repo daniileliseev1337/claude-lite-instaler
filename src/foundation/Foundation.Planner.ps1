@@ -1,12 +1,17 @@
 function Test-FoundationEnvironmentCompatibility {
   param($Manifest, $Environment)
-  if ($null -eq $Environment -or -not [bool]$Environment.codex_detected) { return $false }
+  if ($null -eq $Environment -or -not [bool]$Environment.client_detected -or
+      @('claude', 'codex', 'opencode') -cnotcontains [string]$Environment.target -or
+      @('consumer', 'hub') -cnotcontains [string]$Environment.install_role -or
+      [string]$Manifest.target -cne [string]$Environment.target) {
+    return $false
+  }
   return (
     @($Manifest.compatibility.windows) -ccontains [string]$Environment.windows
   ) -and (
     @($Manifest.compatibility.powershell) -ccontains [string]$Environment.powershell
   ) -and (
-    @($Manifest.compatibility.codex_versions) -ccontains [string]$Environment.codex_version
+    @($Manifest.compatibility.client_versions) -ccontains [string]$Environment.client_version
   )
 }
 
@@ -115,10 +120,10 @@ function New-FoundationPlan {
     $Blockers += [pscustomobject]@{
       code = 'UNSUPPORTED_ENVIRONMENT'
       component_id = $null
-      message = 'Windows, PowerShell or Codex version is unsupported'
+      message = 'Target, role, Windows, PowerShell or client version is unsupported'
     }
   }
-  $StateRoot = Get-FoundationStateRoot $LocalRoot
+  $StateRoot = Get-FoundationStateRoot $LocalRoot $Manifest.target
   if (Test-Path -LiteralPath (Join-Path $StateRoot 'transaction-journal.json')) {
     $Blockers += [pscustomobject]@{
       code = 'RECOVERY_REQUIRED'
@@ -126,7 +131,15 @@ function New-FoundationPlan {
       message = 'Pending transaction journal exists'
     }
   }
-  $State = Read-FoundationActiveState $LocalRoot -AllowMissing
+  $State = Read-FoundationActiveState $LocalRoot $Manifest.target -AllowMissing
+  if ($null -ne $State -and
+      $State.install_role -cne [string]$Environment.install_role) {
+    $Blockers += [pscustomobject]@{
+      code = 'USER_CONFLICT'
+      component_id = $null
+      message = 'Installed role differs; roll back before changing roles'
+    }
+  }
   $StateComponents = Get-FoundationStateComponentIndex $State
   $StateFiles = Get-FoundationStateFileIndex $State
   $NextActiveIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -265,15 +278,20 @@ function New-FoundationPlan {
   }
   $Plan = [pscustomobject][ordered]@{
     release_id = $Manifest.release_id
+    target = $Manifest.target
+    install_role = [string]$Environment.install_role
+    sync_policy = $Manifest.sync_policy
     manifest_sha256 = Get-Sha256Lower $ManifestPath
     package_root = [IO.Path]::GetFullPath($PackageRoot)
     user_profile = $ProfileRoot
     local_app_data = $LocalRoot
     environment = [pscustomobject][ordered]@{
+      target = [string]$Environment.target
+      install_role = [string]$Environment.install_role
       windows = [string]$Environment.windows
       powershell = [string]$Environment.powershell
-      codex_version = [string]$Environment.codex_version
-      codex_detected = [bool]$Environment.codex_detected
+      client_version = [string]$Environment.client_version
+      client_detected = [bool]$Environment.client_detected
     }
     rows = $Rows
     file_operations = $FileOperations
@@ -293,6 +311,9 @@ function Get-FoundationPlanFingerprint {
   param($Plan)
   $Projection = [pscustomobject][ordered]@{
     release_id = $Plan.release_id
+    target = $Plan.target
+    install_role = $Plan.install_role
+    sync_policy = $Plan.sync_policy
     manifest_sha256 = $Plan.manifest_sha256
     package_root = $Plan.package_root
     user_profile = $Plan.user_profile

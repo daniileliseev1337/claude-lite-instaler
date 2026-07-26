@@ -14,7 +14,7 @@ It 'accepts a portable nested path' {
   Assert-True (Test-PortableRelativePath 'agents/skills/example/SKILL.md')
 }
 
-It 'maps only the three managed namespaces' {
+It 'maps native managed namespaces for Claude Codex and OpenCode' {
   $Root = New-TestRoot 'managed-path'
   try {
     $FakeUserProfile = Join-Path $Root 'home'
@@ -25,6 +25,14 @@ It 'maps only the three managed namespaces' {
     Assert-Equal ([IO.Path]::GetFullPath((Join-Path $FakeUserProfile '.agents\skills\example-skill'))) $Skill
     $Core = Resolve-ManagedDestination 'codex/AGENTS.md' $FakeUserProfile
     Assert-Equal ([IO.Path]::GetFullPath((Join-Path $FakeUserProfile '.codex\AGENTS.md'))) $Core
+    $Claude = Resolve-ManagedDestination 'claude/CLAUDE.md' $FakeUserProfile
+    Assert-Equal ([IO.Path]::GetFullPath((Join-Path $FakeUserProfile '.claude\CLAUDE.md'))) $Claude
+    $ClaudeCore = Resolve-ManagedDestination 'claude/core/AGENTS.core.md' $FakeUserProfile
+    Assert-Equal ([IO.Path]::GetFullPath((Join-Path $FakeUserProfile '.claude\core\AGENTS.core.md'))) $ClaudeCore
+    $OpenCode = Resolve-ManagedDestination 'opencode/opencode.json' $FakeUserProfile
+    Assert-Equal ([IO.Path]::GetFullPath((Join-Path $FakeUserProfile '.config\opencode\opencode.json'))) $OpenCode
+    $Launcher = Resolve-ManagedDestination 'local/bin/opencode-base.ps1' $FakeUserProfile
+    Assert-Equal ([IO.Path]::GetFullPath((Join-Path $FakeUserProfile '.local\bin\opencode-base.ps1'))) $Launcher
   } finally { Remove-TestRoot $Root }
 }
 
@@ -33,6 +41,21 @@ It 'rejects unmanaged config path' {
   try {
     Assert-ThrowsCode 'UNSAFE_PATH' {
       Resolve-ManagedDestination 'codex/config.toml' $Root
+    }
+  } finally { Remove-TestRoot $Root }
+}
+
+It 'rejects OpenCode credentials and auth-store paths' {
+  $Root = New-TestRoot 'auth-path'
+  try {
+    foreach ($Path in @(
+        'opencode/auth.json',
+        'local/share/opencode/auth.json',
+        'opencode/.env'
+      )) {
+      Assert-ThrowsCode 'UNSAFE_PATH' {
+        Resolve-ManagedDestination $Path $Root
+      }
     }
   } finally { Remove-TestRoot $Root }
 }

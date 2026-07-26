@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "targets": {
+    "claude": {
+      ".claude/core/AGENTS.core.md": {
+        "component_id": "shared-core",
+        "component_type": "core",
+        "destination_relative_path": "claude/core/AGENTS.core.md"
+      },
+      ".claude/CLAUDE.md": {
+        "component_id": "claude-rules",
+        "component_type": "core",
+        "destination_relative_path": "claude/CLAUDE.md"
+      },
+      ".claude/agents/auditor.md": {
+        "component_id": "auditor",
+        "component_type": "agent",
+        "destination_relative_path": "claude/agents/auditor.md"
+      },
+      ".claude/.base/context-budget.json": {
+        "component_id": "context-budget",
+        "component_type": "metadata",
+        "destination_relative_path": "claude/.base/context-budget.json"
+      },
+      ".claude/.base/target-manifest.json": {
+        "component_id": "target-manifest",
+        "component_type": "metadata",
+        "destination_relative_path": "claude/.base/target-manifest.json"
+      }
+    },
+    "codex": {
+      ".codex/AGENTS.md": {
+        "component_id": "codex-rules",
+        "component_type": "core",
+        "destination_relative_path": "codex/AGENTS.md"
+      },
+      ".codex/agents/auditor.toml": {
+        "component_id": "auditor",
+        "component_type": "agent",
+        "destination_relative_path": "codex/agents/auditor.toml"
+      },
+      ".codex/.base/context-budget.json": {
+        "component_id": "context-budget",
+        "component_type": "metadata",
+        "destination_relative_path": "codex/.base/context-budget.json"
+      },
+      ".codex/.base/target-manifest.json": {
+        "component_id": "target-manifest",
+        "component_type": "metadata",
+        "destination_relative_path": "codex/.base/target-manifest.json"
+      }
+    },
+    "opencode": {
+      ".config/opencode/AGENTS.md": {
+        "component_id": "opencode-rules",
+        "component_type": "core",
+        "destination_relative_path": "opencode/AGENTS.md"
+      },
+      ".config/opencode/opencode.json": {
+        "component_id": "opencode-config",
+        "component_type": "config",
+        "destination_relative_path": "opencode/opencode.json"
+      },
+      ".config/opencode/agents/auditor.md": {
+        "component_id": "auditor",
+        "component_type": "agent",
+        "destination_relative_path": "opencode/agents/auditor.md"
+      },
+      ".config/opencode/.base/context-budget.json": {
+        "component_id": "context-budget",
+        "component_type": "metadata",
+        "destination_relative_path": "opencode/.base/context-budget.json"
+      },
+      ".config/opencode/.base/target-manifest.json": {
+        "component_id": "target-manifest",
+        "component_type": "metadata",
+        "destination_relative_path": "opencode/.base/target-manifest.json"
+      },
+      ".local/bin/opencode-base.ps1": {
+        "component_id": "opencode-launcher",
+        "component_type": "launcher",
+        "destination_relative_path": "local/bin/opencode-base.ps1"
+      }
+    }
+  }
+}

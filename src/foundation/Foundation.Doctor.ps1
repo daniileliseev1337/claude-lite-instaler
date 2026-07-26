@@ -36,10 +36,21 @@ function Invoke-FoundationDoctor {
     [Parameter(Mandatory = $true)][string]$LocalAppData,
     [AllowNull()][string]$ExportReportPath,
     [AllowNull()]$Environment = $null,
+    [AllowNull()][string]$Target = $null,
     [switch]$IgnorePendingJournal
   )
-  $State = Read-FoundationActiveState $LocalAppData -AllowMissing
-  $Pending = (Test-PendingFoundationJournal $LocalAppData) -and -not $IgnorePendingJournal
+  $EffectiveTarget = if (-not [string]::IsNullOrWhiteSpace($Target)) {
+    $Target
+  } elseif ($null -ne $Environment) {
+    [string]$Environment.target
+  } else {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Doctor target is required'
+  }
+  Assert-FoundationTarget $EffectiveTarget
+  $State = Read-FoundationActiveState $LocalAppData $EffectiveTarget -AllowMissing
+  $Pending = (
+    Test-PendingFoundationJournal $LocalAppData $EffectiveTarget
+  ) -and -not $IgnorePendingJournal
   if ($null -eq $State) {
     $Errors = if ($Pending) { @('RECOVERY_REQUIRED') } else { @() }
     $Result = [pscustomobject][ordered]@{
@@ -93,8 +104,10 @@ function Invoke-FoundationDoctor {
     ) -and (
       @($State.compatibility.powershell) -ccontains [string]$Environment.powershell
     ) -and (
-      @($State.compatibility.codex_versions) -ccontains [string]$Environment.codex_version
-    ) -and [bool]$Environment.codex_detected
+      @($State.compatibility.client_versions) -ccontains [string]$Environment.client_version
+    ) -and [bool]$Environment.client_detected -and
+      $State.target -ceq [string]$Environment.target -and
+      $State.install_role -ceq [string]$Environment.install_role
     if (-not $Compatible) { $Errors += 'UNSUPPORTED_ENVIRONMENT' }
   }
   $Errors = @($Errors | Sort-Object -Unique)
@@ -121,17 +134,21 @@ function Write-SafeFoundationDoctorReport {
   param($DoctorResult, [string]$Path)
   $Environment = if ($null -eq $DoctorResult.environment) {
     [pscustomobject][ordered]@{
+      target = $null
+      install_role = $null
       windows = $null
       powershell = $null
-      codex_version = $null
-      codex_detected = $null
+      client_version = $null
+      client_detected = $null
     }
   } else {
     [pscustomobject][ordered]@{
+      target = [string]$DoctorResult.environment.target
+      install_role = [string]$DoctorResult.environment.install_role
       windows = [string]$DoctorResult.environment.windows
       powershell = [string]$DoctorResult.environment.powershell
-      codex_version = [string]$DoctorResult.environment.codex_version
-      codex_detected = [bool]$DoctorResult.environment.codex_detected
+      client_version = [string]$DoctorResult.environment.client_version
+      client_detected = [bool]$DoctorResult.environment.client_detected
     }
   }
   $Report = [pscustomobject][ordered]@{
@@ -158,7 +175,7 @@ function Invoke-FoundationInventory {
     [Parameter(Mandatory = $true)][string]$LocalAppData
   )
   $Manifest = Read-FoundationManifest (Join-Path $PackageRoot 'release-manifest.json')
-  $State = Read-FoundationActiveState $LocalAppData -AllowMissing
+  $State = Read-FoundationActiveState $LocalAppData $Manifest.target -AllowMissing
   $Rows = @(
     foreach ($Component in @($Manifest.components)) {
       $Health = 'NOT_INSTALLED'
@@ -186,6 +203,7 @@ function Invoke-FoundationInventory {
   )
   return [pscustomobject][ordered]@{
     release_id = $Manifest.release_id
+    target = $Manifest.target
     installed_release_id = if ($State) { $State.release_id } else { $null }
     components = $Rows
   }

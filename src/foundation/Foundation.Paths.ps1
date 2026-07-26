@@ -28,19 +28,61 @@ function Resolve-ManagedDestination {
     Throw-FoundationError -Code 'UNSAFE_PATH' -Message 'Destination is not a portable relative path'
   }
   $Parts = @($DestinationRelativePath.Split('/'))
+  $AllowedMetadata = @(
+    'claude/.base/context-budget.json',
+    'claude/.base/target-manifest.json',
+    'codex/.base/context-budget.json',
+    'codex/.base/target-manifest.json',
+    'opencode/.base/context-budget.json',
+    'opencode/.base/target-manifest.json'
+  )
   $Allowed = (
-    $DestinationRelativePath -ceq 'codex/AGENTS.md' -or
+    $DestinationRelativePath -in @(
+      'claude/CLAUDE.md',
+      'claude/core/AGENTS.core.md',
+      'codex/AGENTS.md',
+      'opencode/AGENTS.md',
+      'opencode/opencode.json',
+      'local/bin/opencode-base.ps1'
+    ) -or
+    $AllowedMetadata -ccontains $DestinationRelativePath -or
+    ($Parts.Count -eq 3 -and $Parts[0] -ceq 'claude' -and
+      $Parts[1] -ceq 'agents' -and $Parts[2].EndsWith('.md', [StringComparison]::Ordinal)) -or
     ($Parts.Count -eq 3 -and $Parts[0] -ceq 'codex' -and
       $Parts[1] -ceq 'agents' -and $Parts[2].EndsWith('.toml', [StringComparison]::Ordinal)) -or
-    ($Parts.Count -ge 3 -and $Parts[0] -ceq 'agents' -and $Parts[1] -ceq 'skills')
+    ($Parts.Count -eq 3 -and $Parts[0] -ceq 'opencode' -and
+      $Parts[1] -ceq 'agents' -and $Parts[2].EndsWith('.md', [StringComparison]::Ordinal)) -or
+    ($Parts.Count -ge 3 -and $Parts[0] -ceq 'claude' -and $Parts[1] -ceq 'skills') -or
+    ($Parts.Count -ge 3 -and $Parts[0] -ceq 'agents' -and $Parts[1] -ceq 'skills') -or
+    ($Parts.Count -ge 3 -and $Parts[0] -ceq 'opencode' -and $Parts[1] -ceq 'skills')
   )
   if (-not $Allowed) {
     Throw-FoundationError -Code 'UNSAFE_PATH' -Message 'Destination is outside the foundation allowlist'
   }
-  $Relative = if ($Parts[0] -ceq 'codex') {
-    '.codex\' + (($Parts | Select-Object -Skip 1) -join '\')
-  } else {
-    '.agents\' + (($Parts | Select-Object -Skip 1) -join '\')
+  $Relative = switch ($Parts[0]) {
+    'claude' {
+      '.claude\' + (($Parts | Select-Object -Skip 1) -join '\')
+      break
+    }
+    'codex' {
+      '.codex\' + (($Parts | Select-Object -Skip 1) -join '\')
+      break
+    }
+    'agents' {
+      '.agents\' + (($Parts | Select-Object -Skip 1) -join '\')
+      break
+    }
+    'opencode' {
+      '.config\opencode\' + (($Parts | Select-Object -Skip 1) -join '\')
+      break
+    }
+    'local' {
+      '.local\' + (($Parts | Select-Object -Skip 1) -join '\')
+      break
+    }
+    default {
+      Throw-FoundationError -Code 'UNSAFE_PATH' -Message 'Unknown managed namespace'
+    }
   }
   $ProfileRoot = [IO.Path]::GetFullPath($UserProfile)
   $Result = [IO.Path]::GetFullPath((Join-Path $ProfileRoot $Relative))

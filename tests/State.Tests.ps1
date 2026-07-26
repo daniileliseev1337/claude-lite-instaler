@@ -1,11 +1,13 @@
-It 'derives state root only from injected LocalAppData' {
+It 'derives target-isolated state roots only from injected LocalAppData' {
   $Root = New-TestRoot 'state-root'
   try {
     $LocalAppData = Join-Path $Root 'local'
     [IO.Directory]::CreateDirectory($LocalAppData) | Out-Null
-    $Expected = [IO.Path]::GetFullPath((Join-Path $LocalAppData 'LLMBase\codex-foundation'))
-    Assert-Equal $Expected (Get-FoundationStateRoot $LocalAppData)
-    Assert-False (Test-Path -LiteralPath $Expected)
+    foreach ($Target in @('claude', 'codex', 'opencode')) {
+      $Expected = [IO.Path]::GetFullPath((Join-Path $LocalAppData "LLMBase\foundation\$Target"))
+      Assert-Equal $Expected (Get-FoundationStateRoot $LocalAppData $Target)
+      Assert-False (Test-Path -LiteralPath $Expected)
+    }
   } finally { Remove-TestRoot $Root }
 }
 
@@ -19,4 +21,3 @@ It 'opens one exclusive transaction and blocks a second' {
     Assert-ThrowsCode 'RECOVERY_REQUIRED' { Open-FoundationTransaction $Plan }
   } finally { Remove-TestRoot $Scenario.root }
 }
-

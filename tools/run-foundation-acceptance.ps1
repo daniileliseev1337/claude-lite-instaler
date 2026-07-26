@@ -214,8 +214,10 @@ try {
   $InjectedEnvironment = [pscustomobject][ordered]@{
     windows = [string]@($Manifest.compatibility.windows)[0]
     powershell = [string]@($Manifest.compatibility.powershell)[0]
-    codex_version = [string]@($Manifest.compatibility.codex_versions)[0]
-    codex_detected = $true
+    target = [string]$Manifest.target
+    install_role = [string]$Manifest.sync_policy.default_role
+    client_version = [string]@($Manifest.compatibility.client_versions)[0]
+    client_detected = $true
   }
   $InjectedEnvironment | Add-Member -NotePropertyName secret_token `
     -NotePropertyValue $SecretSignatures[1]
@@ -248,7 +250,7 @@ try {
     $DoctorReport
   ) $SecretSignatures
   if ($Install.installed) {
-    $null = Invoke-FoundationRollback $FakeUser $FakeLocal
+    $null = Invoke-FoundationRollback $FakeUser $FakeLocal $Manifest.target
   }
 } catch {
   $FailureCode = [string]$_.Exception.Data['FoundationCode']

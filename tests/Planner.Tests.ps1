@@ -7,9 +7,9 @@ It 'plans without changing any filesystem byte' {
     $After = Get-TestTreeFingerprint $Scenario.root
     Assert-Equal $Before $After
     Assert-False $Plan.blocked
-    Assert-Equal 2 @($Plan.rows | Where-Object action -eq 'CREATE').Count
-    Assert-Equal 1 @($Plan.rows | Where-Object action -eq 'QUARANTINE').Count
-    Assert-Equal 3 @($Plan.file_operations).Count
+    Assert-Equal 4 @($Plan.rows | Where-Object action -eq 'CREATE').Count
+    Assert-Equal 2 @($Plan.rows | Where-Object action -eq 'QUARANTINE').Count
+    Assert-Equal 4 @($Plan.file_operations).Count
   } finally { Remove-TestRoot $Scenario.root }
 }
 
@@ -28,10 +28,10 @@ It 'blocks the whole plan on one foreign destination' {
   } finally { Remove-TestRoot $Scenario.root }
 }
 
-It 'blocks an unsupported Codex version without writes' {
+It 'blocks an unsupported target client version without writes' {
   $Scenario = New-TestFoundationScenario 'plan-version'
   try {
-    $Scenario.environment.codex_version = '9.9.9'
+    $Scenario.environment.client_version = '9.9.9'
     $Before = Get-TestTreeFingerprint $Scenario.root
     $Plan = New-FoundationPlan $Scenario.package_root $Scenario.user_profile `
       $Scenario.local_app_data $Scenario.environment
@@ -41,3 +41,15 @@ It 'blocks an unsupported Codex version without writes' {
   } finally { Remove-TestRoot $Scenario.root }
 }
 
+It 'blocks a package target mismatch without writes' {
+  $Scenario = New-TestFoundationScenario 'plan-target'
+  try {
+    $Scenario.environment.target = 'opencode'
+    $Before = Get-TestTreeFingerprint $Scenario.root
+    $Plan = New-FoundationPlan $Scenario.package_root $Scenario.user_profile `
+      $Scenario.local_app_data $Scenario.environment
+    Assert-True $Plan.blocked
+    Assert-Equal 'UNSUPPORTED_ENVIRONMENT' $Plan.blockers[0].code
+    Assert-Equal $Before (Get-TestTreeFingerprint $Scenario.root)
+  } finally { Remove-TestRoot $Scenario.root }
+}

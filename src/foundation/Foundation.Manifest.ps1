@@ -11,8 +11,12 @@ function Assert-FoundationSourceIdentity {
     Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'source_identity must be an object'
   }
   if ($Identity.kind -ceq 'git') {
-    Assert-ExactProperties $Identity @('kind', 'commit', 'tree') 'source_identity'
-    if ($Identity.commit -notmatch '^[0-9a-f]{40}$' -or $Identity.tree -notmatch '^[0-9a-f]{40}$') {
+    Assert-ExactProperties $Identity @(
+      'kind', 'commit', 'tree', 'content_sha256'
+    ) 'source_identity'
+    if ($Identity.commit -notmatch '^[0-9a-f]{40}$' -or
+        $Identity.tree -notmatch '^[0-9a-f]{40}$' -or
+        $Identity.content_sha256 -notmatch '^[0-9a-f]{64}$') {
       Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Invalid git source identity'
     }
     return
@@ -31,7 +35,7 @@ function Get-FoundationSourceIdentityKey {
   param($Identity)
   Assert-FoundationSourceIdentity $Identity
   if ($Identity.kind -ceq 'git') {
-    return "git:$($Identity.commit):$($Identity.tree)"
+    return "git:$($Identity.commit):$($Identity.tree):$($Identity.content_sha256)"
   }
   return "content-sha256:$($Identity.content_sha256)"
 }
@@ -63,21 +67,139 @@ function Assert-FoundationStringArray {
   }
 }
 
+function Assert-FoundationTarget {
+  param([Parameter(Mandatory = $true)][string]$Target)
+  if (@('claude', 'codex', 'opencode') -cnotcontains $Target) {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Unsupported foundation target'
+  }
+}
+
+function Assert-FoundationInstallRole {
+  param([Parameter(Mandatory = $true)][string]$Role)
+  if (@('consumer', 'hub') -cnotcontains $Role) {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Unsupported installation role'
+  }
+}
+
+function Assert-FoundationSyncPolicy {
+  param([Parameter(Mandatory = $true)]$Policy)
+  Assert-ExactProperties $Policy @(
+    'direction', 'default_role', 'consumer_push',
+    'consumer_feedback_upload', 'consumer_session_upload',
+    'credentials_included'
+  ) 'sync_policy'
+  if ($Policy.direction -cne 'hub-to-consumer' -or
+      $Policy.default_role -cne 'consumer' -or
+      $Policy.consumer_push -isnot [bool] -or [bool]$Policy.consumer_push -or
+      $Policy.consumer_feedback_upload -isnot [bool] -or [bool]$Policy.consumer_feedback_upload -or
+      $Policy.consumer_session_upload -isnot [bool] -or [bool]$Policy.consumer_session_upload -or
+      $Policy.credentials_included -isnot [bool] -or [bool]$Policy.credentials_included) {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Sync policy is not strictly hub-to-consumer'
+  }
+}
+
 function Test-FoundationManagedDestinationForComponent {
-  param($Component)
+  param($Component, [string]$Target)
   $Destination = [string]$Component.destination_relative_path
-  switch ([string]$Component.component_type) {
+  $Type = [string]$Component.component_type
+  switch ($Type) {
     'core' {
-      return $Destination -ceq 'codex/AGENTS.md'
+      return @{
+        claude = @('claude/CLAUDE.md', 'claude/core/AGENTS.core.md')
+        codex = @('codex/AGENTS.md')
+        opencode = @('opencode/AGENTS.md')
+      }[$Target] -ccontains $Destination
     }
     'agent' {
-      return $Destination -ceq "codex/agents/$($Component.component_id).toml"
+      return $Destination -ceq @{
+        claude = "claude/agents/$($Component.component_id).md"
+        codex = "codex/agents/$($Component.component_id).toml"
+        opencode = "opencode/agents/$($Component.component_id).md"
+      }[$Target]
     }
     'skill' {
-      return $Destination -ceq "agents/skills/$($Component.component_id)"
+      return $Destination -ceq @{
+        claude = "claude/skills/$($Component.component_id)"
+        codex = "agents/skills/$($Component.component_id)"
+        opencode = "opencode/skills/$($Component.component_id)"
+      }[$Target]
+    }
+    'config' {
+      return $Target -ceq 'opencode' -and $Destination -ceq 'opencode/opencode.json'
+    }
+    'launcher' {
+      return $Target -ceq 'opencode' -and $Destination -ceq 'local/bin/opencode-base.ps1'
+    }
+    'metadata' {
+      return $Destination -in @(
+        "$Target/.base/context-budget.json",
+        "$Target/.base/target-manifest.json"
+      )
     }
     default {
       return $false
+    }
+  }
+}
+
+function Get-FoundationRenderedContractRows {
+  param([Parameter(Mandatory = $true)][string]$Target)
+  Assert-FoundationTarget $Target
+  $Contracts = @{
+    claude = @(
+      @('.claude/core/AGENTS.core.md', 'shared-core', 'core', 'claude/core/AGENTS.core.md'),
+      @('.claude/CLAUDE.md', 'claude-rules', 'core', 'claude/CLAUDE.md'),
+      @('.claude/agents/auditor.md', 'auditor', 'agent', 'claude/agents/auditor.md'),
+      @('.claude/.base/context-budget.json', 'context-budget', 'metadata', 'claude/.base/context-budget.json'),
+      @('.claude/.base/target-manifest.json', 'target-manifest', 'metadata', 'claude/.base/target-manifest.json')
+    )
+    codex = @(
+      @('.codex/AGENTS.md', 'codex-rules', 'core', 'codex/AGENTS.md'),
+      @('.codex/agents/auditor.toml', 'auditor', 'agent', 'codex/agents/auditor.toml'),
+      @('.codex/.base/context-budget.json', 'context-budget', 'metadata', 'codex/.base/context-budget.json'),
+      @('.codex/.base/target-manifest.json', 'target-manifest', 'metadata', 'codex/.base/target-manifest.json')
+    )
+    opencode = @(
+      @('.config/opencode/AGENTS.md', 'opencode-rules', 'core', 'opencode/AGENTS.md'),
+      @('.config/opencode/opencode.json', 'opencode-config', 'config', 'opencode/opencode.json'),
+      @('.config/opencode/agents/auditor.md', 'auditor', 'agent', 'opencode/agents/auditor.md'),
+      @('.config/opencode/.base/context-budget.json', 'context-budget', 'metadata', 'opencode/.base/context-budget.json'),
+      @('.config/opencode/.base/target-manifest.json', 'target-manifest', 'metadata', 'opencode/.base/target-manifest.json'),
+      @('.local/bin/opencode-base.ps1', 'opencode-launcher', 'launcher', 'local/bin/opencode-base.ps1')
+    )
+  }
+  return @(
+    foreach ($Values in @($Contracts[$Target])) {
+      [pscustomobject][ordered]@{
+        source_relative_path = [string]$Values[0]
+        component_id = [string]$Values[1]
+        component_type = [string]$Values[2]
+        destination_relative_path = [string]$Values[3]
+      }
+    }
+  )
+}
+
+function Assert-FoundationRenderedManifestContract {
+  param([Parameter(Mandatory = $true)]$Manifest)
+  $Expected = @(Get-FoundationRenderedContractRows ([string]$Manifest.target))
+  $Active = @(
+    $Manifest.components | Where-Object activation -CEQ 'ACTIVE_ELIGIBLE'
+  )
+  if ($Active.Count -ne $Expected.Count) {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' `
+      -Message 'Active component count differs from rendered target contract'
+  }
+  foreach ($Row in $Expected) {
+    $Matches = @(
+      $Active | Where-Object component_id -CEQ $Row.component_id
+    )
+    if ($Matches.Count -ne 1 -or
+        $Matches[0].component_type -cne $Row.component_type -or
+        $Matches[0].destination_relative_path -cne
+          $Row.destination_relative_path) {
+      Throw-FoundationError -Code 'INVALID_PACKAGE' `
+        -Message "Active component differs from rendered contract: $($Row.component_id)"
     }
   }
 }
@@ -163,7 +285,7 @@ function Assert-FoundationAggregateCounts {
       [int64]$Counts.total -ne @($Components).Count) {
     Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Manifest total count differs'
   }
-  $Types = @('core', 'agent', 'skill', 'hook', 'mcp', 'plugin')
+  $Types = @('core', 'agent', 'skill', 'config', 'launcher', 'metadata', 'hook', 'mcp', 'plugin')
   $Verdicts = @('PASS', 'NOT_TESTED', 'BLOCKED', 'FAIL')
   $Activations = @(
     'ACTIVE_ELIGIBLE', 'QUARANTINE_NOT_TESTED', 'QUARANTINE_BLOCKED',
@@ -179,17 +301,20 @@ function Test-FoundationManifest {
   param([Parameter(Mandatory = $true)]$Manifest)
   $Top = @(
     'schema_version', 'release_id', 'channel', 'built_at_utc', 'vendor',
-    'source_identity', 'installer_protocol_version', 'compatibility',
+    'target', 'source_identity', 'installer_protocol_version', 'compatibility',
+    'sync_policy',
     'files', 'components', 'counts', 'full_release_verdict'
   )
   Assert-ExactProperties $Manifest $Top 'manifest'
-  if ($Manifest.schema_version -ne 1 -or $Manifest.vendor -cne 'codex' -or
+  if ($Manifest.schema_version -ne 2 -or $Manifest.vendor -cne 'llm-base' -or
       $Manifest.channel -cne 'foundation-canary' -or
       $Manifest.full_release_verdict -cne 'NOT_PASS' -or
       $Manifest.release_id -notmatch '^foundation-[a-z0-9][a-z0-9.-]{0,79}$' -or
       $Manifest.installer_protocol_version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
     Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Manifest constants differ'
   }
+  Assert-FoundationTarget ([string]$Manifest.target)
+  Assert-FoundationSyncPolicy $Manifest.sync_policy
   if ($Manifest.built_at_utc -notmatch '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$') {
     Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Invalid UTC build timestamp'
   }
@@ -203,17 +328,20 @@ function Test-FoundationManifest {
   }
 
   $SourceKey = Get-FoundationSourceIdentityKey $Manifest.source_identity
-  Assert-ExactProperties $Manifest.compatibility @('windows', 'powershell', 'codex_versions') 'compatibility'
+  Assert-ExactProperties $Manifest.compatibility @('windows', 'powershell', 'client_versions') 'compatibility'
   Assert-FoundationStringArray @($Manifest.compatibility.windows) 'compatibility.windows' -Allowed @('10', '11')
   Assert-FoundationStringArray @($Manifest.compatibility.powershell) 'compatibility.powershell' -Allowed @('5.1', '7')
-  Assert-FoundationStringArray @($Manifest.compatibility.codex_versions) 'compatibility.codex_versions'
-  foreach ($Version in @($Manifest.compatibility.codex_versions)) {
+  Assert-FoundationStringArray @($Manifest.compatibility.client_versions) 'compatibility.client_versions'
+  foreach ($Version in @($Manifest.compatibility.client_versions)) {
     if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') {
-      Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Invalid Codex version'
+      Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Invalid target client version'
     }
   }
 
-  $AllowedTypes = @('core', 'agent', 'skill', 'hook', 'mcp', 'plugin')
+  $AllowedTypes = @(
+    'core', 'agent', 'skill', 'config', 'launcher', 'metadata',
+    'hook', 'mcp', 'plugin'
+  )
   $AllowedVerdicts = @('PASS', 'NOT_TESTED', 'BLOCKED', 'FAIL')
   $AllowedActivations = @(
     'ACTIVE_ELIGIBLE', 'QUARANTINE_NOT_TESTED', 'QUARANTINE_BLOCKED',
@@ -253,7 +381,7 @@ function Test-FoundationManifest {
     if ($Component.activation -ceq 'ACTIVE_ELIGIBLE') {
       if ($Component.acceptance_verdict -cne 'PASS' -or @($Component.evidence_ids).Count -eq 0 -or
           $null -ne $Component.quarantine_reason -or
-          -not (Test-FoundationManagedDestinationForComponent $Component) -or
+          -not (Test-FoundationManagedDestinationForComponent $Component $Manifest.target) -or
           -not $Destinations.Add([string]$Component.destination_relative_path)) {
         Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Invalid active component'
       }

@@ -19,6 +19,7 @@ function New-TestComponent {
       kind = 'git'
       commit = '1111111111111111111111111111111111111111'
       tree = '2222222222222222222222222222222222222222'
+      content_sha256 = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
     }
     payload_relative_path = "active/agents/$Id.toml"
     destination_relative_path = if ([string]::IsNullOrEmpty($Destination)) { $null } else { $Destination }
@@ -69,11 +70,95 @@ It 'accepts one valid active agent component' {
   Test-FoundationManifest $Manifest
 }
 
-It 'rejects every non-Codex vendor value' {
-  foreach ($Vendor in @('other', 'codex-preview')) {
+It 'rejects every non-LLM-base vendor value' {
+  foreach ($Vendor in @('other', 'codex', 'llm-base-preview')) {
     $Manifest = Copy-TestManifest
     $Manifest.vendor = $Vendor
     Assert-ThrowsCode 'INVALID_PACKAGE' { Test-FoundationManifest $Manifest }
+  }
+}
+
+It 'accepts exactly Claude Codex and OpenCode targets' {
+  foreach ($Target in @('claude', 'codex', 'opencode')) {
+    $Manifest = Copy-TestManifest
+    $Manifest.target = $Target
+    Test-FoundationManifest $Manifest
+  }
+}
+
+It 'rejects Kimi as a standalone target' {
+  $Manifest = Copy-TestManifest
+  $Manifest.target = 'kimi'
+  Assert-ThrowsCode 'INVALID_PACKAGE' { Test-FoundationManifest $Manifest }
+}
+
+It 'requires a strictly one-way consumer sync policy' {
+  foreach ($Property in @(
+      'consumer_push', 'consumer_feedback_upload',
+      'consumer_session_upload', 'credentials_included'
+    )) {
+    $Manifest = Copy-TestManifest
+    $Manifest.sync_policy.$Property = $true
+    Assert-ThrowsCode 'INVALID_PACKAGE' { Test-FoundationManifest $Manifest }
+  }
+  $Manifest = Copy-TestManifest
+  $Manifest.sync_policy.direction = 'bidirectional'
+  Assert-ThrowsCode 'INVALID_PACKAGE' { Test-FoundationManifest $Manifest }
+}
+
+It 'accepts native active agents for every target and rejects cross-target paths' {
+  $Cases = @(
+    @{ target='claude'; destination='claude/agents/auditor.md' },
+    @{ target='codex'; destination='codex/agents/auditor.toml' },
+    @{ target='opencode'; destination='opencode/agents/auditor.md' }
+  )
+  foreach ($Case in $Cases) {
+    $Manifest = Copy-TestManifest
+    $Manifest.target = $Case.target
+    $Manifest = Add-TestComponent $Manifest (
+      New-TestComponent -Destination $Case.destination
+    )
+    Test-FoundationManifest $Manifest
+  }
+  $Manifest = Copy-TestManifest
+  $Manifest.target = 'opencode'
+  $Manifest = Add-TestComponent $Manifest (New-TestComponent)
+  Assert-ThrowsCode 'INVALID_PACKAGE' { Test-FoundationManifest $Manifest }
+}
+
+It 'accepts OpenCode core config launcher and metadata components' {
+  $Cases = @(
+    @{ id='opencode-rules'; type='core'; destination='opencode/AGENTS.md' },
+    @{ id='opencode-config'; type='config'; destination='opencode/opencode.json' },
+    @{ id='opencode-launcher'; type='launcher'; destination='local/bin/opencode-base.ps1' },
+    @{ id='context-budget'; type='metadata'; destination='opencode/.base/context-budget.json' }
+  )
+  foreach ($Case in $Cases) {
+    $Manifest = Copy-TestManifest
+    $Manifest.target = 'opencode'
+    $Component = New-TestComponent -Id $Case.id -Type $Case.type `
+      -Destination $Case.destination
+    $Manifest = Add-TestComponent $Manifest $Component
+    Test-FoundationManifest $Manifest
+  }
+}
+
+It 'ships an exact rendered-file map for Claude Codex and OpenCode only' {
+  $Path = Join-Path $PSScriptRoot '..\contracts\foundation\rendered-target-map.json'
+  $Map = Read-JsonFileStrict $Path 1048576
+  Assert-Equal @('schema_version', 'targets') @(
+    $Map.PSObject.Properties.Name
+  )
+  Assert-Equal @('claude', 'codex', 'opencode') @(
+    $Map.targets.PSObject.Properties.Name
+  )
+  foreach ($Target in @('claude', 'codex', 'opencode')) {
+    foreach ($Property in @($Map.targets.$Target.PSObject.Properties)) {
+      $Row = $Property.Value
+      Assert-True (
+        Test-FoundationManagedDestinationForComponent $Row $Target
+      ) "Invalid rendered target mapping: $Target/$($Property.Name)"
+    }
   }
 }
 

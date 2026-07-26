@@ -1,9 +1,9 @@
 function Read-FoundationSnapshot {
-  param([string]$LocalAppData, [string]$SnapshotId)
+  param([string]$LocalAppData, [string]$Target, [string]$SnapshotId)
   if ($SnapshotId -notmatch '^[0-9a-f]{64}$') {
     Throw-FoundationError -Code 'RECOVERY_REQUIRED' -Message 'Snapshot ID is invalid'
   }
-  $Root = Join-Path (Get-FoundationStateRoot $LocalAppData) "backups\$SnapshotId"
+  $Root = Join-Path (Get-FoundationStateRoot $LocalAppData $Target) "backups\$SnapshotId"
   $Path = Join-Path $Root 'snapshot.json'
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     Throw-FoundationError -Code 'RECOVERY_REQUIRED' -Message 'Snapshot metadata is missing'
@@ -37,8 +37,8 @@ function Read-FoundationSnapshot {
 }
 
 function Write-FoundationRecoveryMetadata {
-  param([string]$LocalAppData, $Row, [string]$Code)
-  $Root = Initialize-FoundationStateRoot $LocalAppData
+  param([string]$LocalAppData, [string]$Target, $Row, [string]$Code)
+  $Root = Initialize-FoundationStateRoot $LocalAppData $Target
   $Path = Join-Path $Root ("recovery\rollback-{0}.json" -f (New-FoundationRandomId))
   $Record = [pscustomobject][ordered]@{
     schema_version = 1
@@ -53,34 +53,50 @@ function Write-FoundationRecoveryMetadata {
 }
 
 function Open-FoundationRollbackJournal {
-  param([string]$LocalAppData, [string]$ReleaseId, [string]$SnapshotId)
-  $StateRoot = Initialize-FoundationStateRoot $LocalAppData
+  param(
+    [string]$LocalAppData,
+    [string]$Target,
+    [string]$ReleaseId,
+    [string]$SnapshotId,
+    [string[]]$CreatedPaths = @(),
+    [string[]]$UpdatedPaths = @()
+  )
+  $StateRoot = Initialize-FoundationStateRoot $LocalAppData $Target
   $Path = Join-Path $StateRoot 'transaction-journal.json'
   if (Test-Path -LiteralPath $Path) {
-    $Journal = Read-FoundationJournal $LocalAppData
-    return [pscustomobject]@{
-      state_root=$StateRoot
-      journal_path=$Path
-      journal=$Journal
-      transaction_id=$Journal.transaction_id
-      snapshot_id=$Journal.snapshot_id
+    $Journal = Read-FoundationJournal $LocalAppData $Target
+    if ($Journal.release_id -cne $ReleaseId -or
+        $Journal.snapshot_id -cne $SnapshotId -or
+        @('install', 'rollback') -cnotcontains [string]$Journal.kind) {
+      Throw-FoundationError -Code 'RECOVERY_REQUIRED' `
+        -Message 'Pending journal does not match rollback snapshot'
     }
+    if ($Journal.kind -ceq 'install') {
+      $Journal.kind = 'rollback'
+      $Journal.transaction_id = New-FoundationRandomId
+      $Journal.plan_fingerprint = 'rollback'
+      $Journal.next_step = 1
+    }
+    $Journal.created_paths = @($CreatedPaths | Sort-Object)
+    $Journal.updated_paths = @($UpdatedPaths | Sort-Object)
+    Write-FoundationJsonAtomic $Journal $Path
+  } else {
+    $Journal = [pscustomobject][ordered]@{
+      schema_version = 1
+      kind = 'rollback'
+      transaction_id = New-FoundationRandomId
+      release_id = $ReleaseId
+      status = 'OPEN'
+      next_step = 1
+      snapshot_id = $SnapshotId
+      plan_fingerprint = 'rollback'
+      created_paths = @($CreatedPaths | Sort-Object)
+      updated_paths = @($UpdatedPaths | Sort-Object)
+      created_directories = @()
+      created_at_utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    Write-CanonicalFoundationJsonExclusive $Journal $Path
   }
-  $Journal = [pscustomobject][ordered]@{
-    schema_version = 1
-    kind = 'rollback'
-    transaction_id = New-FoundationRandomId
-    release_id = $ReleaseId
-    status = 'OPEN'
-    next_step = 1
-    snapshot_id = $SnapshotId
-    plan_fingerprint = 'rollback'
-    created_paths = @()
-    updated_paths = @()
-    created_directories = @()
-    created_at_utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-  }
-  Write-CanonicalFoundationJsonExclusive $Journal $Path
   return [pscustomobject]@{
     state_root=$StateRoot
     journal_path=$Path
@@ -90,10 +106,19 @@ function Open-FoundationRollbackJournal {
   }
 }
 
+function Write-FoundationRollbackProgress {
+  param($Context, $CreatedPaths, $UpdatedPaths)
+  $Context.journal.created_paths = @($CreatedPaths | Sort-Object)
+  $Context.journal.updated_paths = @($UpdatedPaths | Sort-Object)
+  $Context.journal.next_step = [int]$Context.journal.next_step + 1
+  Write-FoundationJsonAtomic $Context.journal $Context.journal_path
+}
+
 function Remove-FoundationInterruptedStagingFiles {
   param(
     [Parameter(Mandatory = $true)][string]$UserProfile,
     [Parameter(Mandatory = $true)][string]$LocalAppData,
+    [Parameter(Mandatory = $true)][string]$Target,
     [Parameter(Mandatory = $true)]$Journal,
     [Parameter(Mandatory = $true)]$Snapshot
   )
@@ -111,9 +136,39 @@ function Remove-FoundationInterruptedStagingFiles {
     if ($Item.PSIsContainer -or
         ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
         (Get-Sha256Lower $Staged) -cne $Row.installed_sha256) {
-      Write-FoundationRecoveryMetadata $LocalAppData $Row 'ROLLBACK_CONFLICT'
+      Write-FoundationRecoveryMetadata $LocalAppData $Target $Row 'ROLLBACK_CONFLICT'
       Throw-FoundationError -Code 'ROLLBACK_CONFLICT' `
         -Message "Staging file changed: $($Row.component_id)"
+    }
+    Remove-Item -LiteralPath $Staged -Force
+  }
+}
+
+function Remove-FoundationInterruptedRollbackStagingFiles {
+  param(
+    [Parameter(Mandatory = $true)][string]$UserProfile,
+    [Parameter(Mandatory = $true)][string]$LocalAppData,
+    [Parameter(Mandatory = $true)][string]$Target,
+    [Parameter(Mandatory = $true)]$Journal,
+    [Parameter(Mandatory = $true)]$Snapshot
+  )
+  foreach ($Row in @($Snapshot.rows | Where-Object operation -CEQ 'UPDATED')) {
+    $Destination = Resolve-ManagedDestination `
+      $Row.destination_relative_path $UserProfile
+    $Parent = Split-Path -Parent $Destination
+    $Name = [IO.Path]::GetFileName($Destination)
+    $Staged = Join-Path $Parent (
+      ".$Name.rollback-$($Journal.transaction_id).tmp"
+    )
+    if (-not (Test-Path -LiteralPath $Staged)) { continue }
+    Assert-SafeExistingDirectory $Parent
+    $Item = Get-Item -LiteralPath $Staged -Force -ErrorAction Stop
+    if ($Item.PSIsContainer -or
+        ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        (Get-Sha256Lower $Staged) -cne $Row.prior_sha256) {
+      Write-FoundationRecoveryMetadata $LocalAppData $Target $Row 'ROLLBACK_CONFLICT'
+      Throw-FoundationError -Code 'ROLLBACK_CONFLICT' `
+        -Message "Rollback staging file changed: $($Row.component_id)"
     }
     Remove-Item -LiteralPath $Staged -Force
   }
@@ -122,12 +177,15 @@ function Remove-FoundationInterruptedStagingFiles {
 function Invoke-FoundationRollback {
   param(
     [Parameter(Mandatory = $true)][string]$UserProfile,
-    [Parameter(Mandatory = $true)][string]$LocalAppData
+    [Parameter(Mandatory = $true)][string]$LocalAppData,
+    [Parameter(Mandatory = $true)][string]$Target,
+    [scriptblock]$FailureInjector = {}
   )
-  $Pending = Test-PendingFoundationJournal $LocalAppData
-  $State = Read-FoundationActiveState $LocalAppData -AllowMissing
+  Assert-FoundationTarget $Target
+  $Pending = Test-PendingFoundationJournal $LocalAppData $Target
+  $State = Read-FoundationActiveState $LocalAppData $Target -AllowMissing
   if ($Pending) {
-    $ExistingJournal = Read-FoundationJournal $LocalAppData
+    $ExistingJournal = Read-FoundationJournal $LocalAppData $Target
     $SnapshotId = [string]$ExistingJournal.snapshot_id
     $ReleaseId = [string]$ExistingJournal.release_id
   } elseif ($null -ne $State) {
@@ -137,40 +195,114 @@ function Invoke-FoundationRollback {
   } else {
     Throw-FoundationError -Code 'RECOVERY_REQUIRED' -Message 'No installed or interrupted release to roll back'
   }
-  $SnapshotContext = Read-FoundationSnapshot $LocalAppData $SnapshotId
+  $SnapshotContext = Read-FoundationSnapshot $LocalAppData $Target $SnapshotId
   $Snapshot = $SnapshotContext.snapshot
-  if ($Pending) {
-    Remove-FoundationInterruptedStagingFiles $UserProfile $LocalAppData `
+  $PendingKind = if ($Pending) { [string]$ExistingJournal.kind } else { 'committed' }
+  if ($PendingKind -ceq 'install') {
+    Remove-FoundationInterruptedStagingFiles $UserProfile $LocalAppData $Target `
       $ExistingJournal $Snapshot
+  } elseif ($PendingKind -ceq 'rollback') {
+    Remove-FoundationInterruptedRollbackStagingFiles $UserProfile $LocalAppData `
+      $Target $ExistingJournal $Snapshot
   }
   $AppliedCreated = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
   $AppliedUpdated = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
   if ($Pending) {
     foreach ($Path in @($ExistingJournal.created_paths)) { $null = $AppliedCreated.Add([string]$Path) }
     foreach ($Path in @($ExistingJournal.updated_paths)) { $null = $AppliedUpdated.Add([string]$Path) }
+    foreach ($Row in @($Snapshot.rows)) {
+      $Relative = [string]$Row.destination_relative_path
+      $IsPendingPath = if ($Row.operation -ceq 'CREATED') {
+        $AppliedCreated.Contains($Relative)
+      } else {
+        $AppliedUpdated.Contains($Relative)
+      }
+
+      $Destination = Resolve-ManagedDestination $Relative $UserProfile
+      $Exists = Test-Path -LiteralPath $Destination
+      $IsFile = Test-Path -LiteralPath $Destination -PathType Leaf
+      $ActualHash = if ($IsFile) { Get-Sha256Lower $Destination } else { $null }
+      $WasApplied = $false
+      $Conflict = $false
+      if ($PendingKind -ceq 'install') {
+        if (-not $IsPendingPath) { continue }
+        if ($Row.operation -ceq 'CREATED') {
+          if (-not $Exists) {
+            $WasApplied = $false
+          } elseif ($IsFile -and $ActualHash -ceq $Row.installed_sha256) {
+            $WasApplied = $true
+          } else {
+            $Conflict = $true
+          }
+        } else {
+          if (-not $IsFile) {
+            $Conflict = $true
+          } elseif ($ActualHash -ceq $Row.prior_sha256) {
+            $WasApplied = $false
+          } elseif ($ActualHash -ceq $Row.installed_sha256) {
+            $WasApplied = $true
+          } else {
+            $Conflict = $true
+          }
+        }
+      } else {
+        if ($Row.operation -ceq 'CREATED') {
+          if (-not $Exists) {
+            $WasApplied = $false
+          } elseif ($IsPendingPath -and $IsFile -and
+              $ActualHash -ceq $Row.installed_sha256) {
+            $WasApplied = $true
+          } else {
+            $Conflict = $true
+          }
+        } else {
+          if (-not $IsFile) {
+            $Conflict = $true
+          } elseif ($ActualHash -ceq $Row.prior_sha256) {
+            $WasApplied = $false
+          } elseif ($IsPendingPath -and
+              $ActualHash -ceq $Row.installed_sha256) {
+            $WasApplied = $true
+          } else {
+            $Conflict = $true
+          }
+        }
+      }
+      if ($Conflict) {
+        Write-FoundationRecoveryMetadata $LocalAppData $Target $Row 'ROLLBACK_CONFLICT'
+        Throw-FoundationError -Code 'ROLLBACK_CONFLICT' `
+          -Message "Managed file state is ambiguous: $($Row.component_id)"
+      }
+      if (-not $WasApplied) {
+        if ($Row.operation -ceq 'CREATED') {
+          $null = $AppliedCreated.Remove($Relative)
+        } else {
+          $null = $AppliedUpdated.Remove($Relative)
+        }
+      }
+    }
   } else {
     foreach ($Row in @($Snapshot.rows)) {
       if ($Row.operation -ceq 'CREATED') { $null = $AppliedCreated.Add([string]$Row.destination_relative_path) }
       else { $null = $AppliedUpdated.Add([string]$Row.destination_relative_path) }
     }
-  }
-
-  foreach ($Row in @($Snapshot.rows)) {
-    $Applied = if ($Row.operation -ceq 'CREATED') {
-      $AppliedCreated.Contains([string]$Row.destination_relative_path)
-    } else {
-      $AppliedUpdated.Contains([string]$Row.destination_relative_path)
-    }
-    if (-not $Applied) { continue }
-    $Destination = Resolve-ManagedDestination $Row.destination_relative_path $UserProfile
-    if (-not (Test-Path -LiteralPath $Destination -PathType Leaf) -or
-        (Get-Sha256Lower $Destination) -cne $Row.installed_sha256) {
-      Write-FoundationRecoveryMetadata $LocalAppData $Row 'ROLLBACK_CONFLICT'
-      Throw-FoundationError -Code 'ROLLBACK_CONFLICT' -Message "Managed file changed: $($Row.component_id)"
+    foreach ($Row in @($Snapshot.rows)) {
+      $Destination = Resolve-ManagedDestination `
+        $Row.destination_relative_path $UserProfile
+      if (-not (Test-Path -LiteralPath $Destination -PathType Leaf) -or
+          (Get-Sha256Lower $Destination) -cne $Row.installed_sha256) {
+        Write-FoundationRecoveryMetadata $LocalAppData $Target $Row `
+          'ROLLBACK_CONFLICT'
+        Throw-FoundationError -Code 'ROLLBACK_CONFLICT' `
+          -Message "Managed file changed: $($Row.component_id)"
+      }
     }
   }
 
-  $Context = Open-FoundationRollbackJournal $LocalAppData $ReleaseId $SnapshotId
+  $Context = Open-FoundationRollbackJournal $LocalAppData $Target $ReleaseId `
+    $SnapshotId @($AppliedCreated) @($AppliedUpdated)
+  & $FailureInjector 'after-open'
+  $Ordinal = 0
   foreach ($Row in @($Snapshot.rows | Sort-Object sequence -Descending)) {
     $Applied = if ($Row.operation -ceq 'CREATED') {
       $AppliedCreated.Contains([string]$Row.destination_relative_path)
@@ -178,6 +310,7 @@ function Invoke-FoundationRollback {
       $AppliedUpdated.Contains([string]$Row.destination_relative_path)
     }
     if (-not $Applied) { continue }
+    $Ordinal++
     $Destination = Resolve-ManagedDestination $Row.destination_relative_path $UserProfile
     if ($Row.operation -ceq 'CREATED') {
       Remove-Item -LiteralPath $Destination -Force
@@ -187,13 +320,23 @@ function Invoke-FoundationRollback {
         ".$([IO.Path]::GetFileName($Destination)).rollback-$($Context.transaction_id).tmp"
       )
       Copy-FoundationFileExclusive $Backup $Staged
+      & $FailureInjector "after-stage-$Ordinal"
       Invoke-FoundationAtomicReplace $Staged $Destination
       if ((Get-Sha256Lower $Destination) -cne $Row.prior_sha256) {
         Throw-FoundationError -Code 'ACTIVE_DRIFT' -Message 'Restored file hash differs'
       }
     }
+    & $FailureInjector "after-file-$Ordinal"
+    if ($Row.operation -ceq 'CREATED') {
+      $null = $AppliedCreated.Remove([string]$Row.destination_relative_path)
+    } else {
+      $null = $AppliedUpdated.Remove([string]$Row.destination_relative_path)
+    }
+    Write-FoundationRollbackProgress $Context $AppliedCreated $AppliedUpdated
+    & $FailureInjector "after-progress-$Ordinal"
   }
 
+  & $FailureInjector 'before-directories'
   $ProfileRoot = [IO.Path]::GetFullPath($UserProfile)
   $Directories = @($Snapshot.created_directories | Sort-Object { $_.Length } -Descending)
   foreach ($Relative in $Directories) {
@@ -208,17 +351,25 @@ function Invoke-FoundationRollback {
       if ($Children.Count -eq 0) { Remove-Item -LiteralPath $Directory -Force }
     }
   }
+  & $FailureInjector 'after-directories'
+  & $FailureInjector 'before-state'
   if ($null -eq $Snapshot.prior_state) {
-    Remove-FoundationActiveState $LocalAppData
+    Remove-FoundationActiveState $LocalAppData $Target
   } else {
-    Write-FoundationActiveState $Snapshot.prior_state $LocalAppData
+    Write-FoundationActiveState $Snapshot.prior_state $LocalAppData $Target
   }
-  $Doctor = Invoke-FoundationDoctor $UserProfile $LocalAppData $null $null -IgnorePendingJournal
+  & $FailureInjector 'after-state'
+  & $FailureInjector 'before-doctor'
+  $Doctor = Invoke-FoundationDoctor $UserProfile $LocalAppData $null $null `
+    -Target $Target -IgnorePendingJournal
   if (-not $Doctor.healthy) {
     Throw-FoundationError -Code 'ACTIVE_DRIFT' -Message 'Rollback doctor failed'
   }
-  Close-FoundationTransaction $Context 'ROLLED_BACK'
-  $Doctor = Invoke-FoundationDoctor $UserProfile $LocalAppData $null
+  & $FailureInjector 'after-doctor'
+  & $FailureInjector 'before-close'
+  Close-FoundationTransaction $Context 'ROLLED_BACK' $FailureInjector
+  $Doctor = Invoke-FoundationDoctor $UserProfile $LocalAppData $null $null `
+    -Target $Target
   return [pscustomobject]@{
     rolled_back = $true
     release_id = $Doctor.release_id

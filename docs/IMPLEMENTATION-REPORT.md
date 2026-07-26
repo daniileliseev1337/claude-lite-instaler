@@ -1,88 +1,80 @@
-# Codex Foundation Mini-Installer — implementation report
+# LLM Base Foundation Installer — implementation report
 
-Date: 2026-07-23
+Date: 2026-07-26
 
 ## Verdict
 
 - `FOUNDATION_SYNTHETIC: PASS`
 - `EMPLOYEE_PACKAGE: BLOCKED_APPROVED_FOUNDATION_SOURCE`
-- `INDEPENDENT_AUDIT: NOT_RUN`
+- `INDEPENDENT_AUDIT: PENDING`
 - `FULL_RELEASE: NOT_PASS`
 
-The installer engine is implemented and verified only against injected
-fake-home roots. No live vendor home, config, cache, credential store or device
+The engine is verified only against injected fake-home roots. No live client
+home, config, cache, credential store, login, subscription or device
 installation was changed.
-
-## Frozen authority
-
-- Design SHA-256:
-  `86765B00010EE6698259B542E6BF042C5D304F8D04F40F10B3A215F30A62DBDD`
-- Plan SHA-256:
-  `C6527D961C42D7A625F28792026E8DEE4DD705473B2468C775E6CB37C0AEED53`
-- Permission nonce:
-  `93d25250083404f3066860ac3d49a6f4656b6751d78b07e19995521c9aa4df30`
-- Permission receipt SHA-256:
-  `10D17B34B8896B30525EE6B9250DBB645C1D47E34E7DC39CF2EB3E4BA575234F`
 
 ## Implemented surface
 
-- strict bounded UTF-8 JSON and closed manifest/inventory contracts;
-- portable path, Unicode, reserved-name, collision and reparse rejection;
-- deterministic active/quarantine classifier and package tree;
-- zero-write `plan` with compatibility, ownership and conflict checks;
-- journaled current-user transaction, snapshot, doctor and inventory;
-- byte-exact rollback with conflict-safe interrupted staging cleanup;
-- five-command CLI: `plan`, `install`, `doctor`, `inventory`, `rollback`;
-- deterministic one-file offline bundle with AST denylist;
-- safe doctor JSON and offline employee HTML guide.
+- manifest/inventory schema v2 for exactly Claude, Codex, and OpenCode;
+- Kimi rejected as a standalone target;
+- target-native managed path allowlists;
+- OpenCode core, config, agent, metadata, skill and launcher destinations;
+- target-isolated state, transactions, doctor, inventory and rollback;
+- generic target-client version compatibility without model selection;
+- explicit `consumer` default and optional `hub` role;
+- strict `hub-to-consumer` manifest contract;
+- consumer push, feedback upload, session upload and credentials all forced
+  to `false`;
+- credentials/auth-store paths excluded from the destination allowlist;
+- deterministic rendered-file bridge from LLM-base to Foundation;
+- cryptographic binding of the declared identity to the complete approved
+  source tree;
+- builder and runtime enforcement of the exact rendered active set;
+- zero-write plan, exact install confirmation and conflict-safe apply;
+- write-ahead install and rollback progress with interruption recovery;
+- bounded safe doctor report and deterministic one-file offline bundle.
 
 ## Synthetic evidence
 
-Acceptance attempt
-`14d2d13b7513f33f07956f04336a88d412dca45189f8bc897cb34020dcc82cc4`
-was run against implementation commit
-`6c792eb76ff7c416bad66d99cc6648fcdb759231`.
+The latest interactive development run completed in both shells:
 
-- PowerShell 7.6.1: 96/96 tests PASS
-- Windows PowerShell 5.1.26100.6725: 96/96 tests PASS
-- bundle determinism: PASS
-- security matrix: PASS
-- full fake-home E2E and failure injection: PASS
-- seeded secret scan: PASS
-- generated bundle SHA-256:
-  `391c3a93fc9a7bdf0bde95324a376e969bba147df3dd066f6a8eed593e348080`
-- synthetic manifest SHA-256:
-  `10bf21163471996e08705ed3351b81329861b953cf38189efc60077f440cdb13`
+- PowerShell 7.6.1: 115/115 tests PASS;
+- Windows PowerShell 5.1.26100.6725: 115/115 tests PASS;
+- side-by-side Claude/Codex/OpenCode fake-home install: PASS;
+- install and rollback interruption matrices plus byte-exact recovery: PASS;
+- bundle determinism and external-process denylist: PASS;
+- seeded secret scan: PASS;
+- source-tree identity binding and rendered-target map rejection tests: PASS.
 
-The final handoff must cite a fresh acceptance attempt bound to the final
-repository commit, because this report itself changes that commit.
+These 115/115 observations are not yet retained as immutable acceptance
+evidence. The final handoff must cite a fresh acceptance attempt after the
+final branch commit. A test run against uncommitted files is useful
+development evidence, but it is not release evidence.
 
 ## Blocking source gate
 
-The project-local search found no artifact satisfying all required fields:
+The repositories still do not contain an approved immutable rendered source
+with all required bindings:
 
-- approved immutable `git` or `content-sha256` source identity;
-- byte/hash inventory for every source file;
+- immutable git/tree or content-SHA identity;
+- byte/hash inventory for every rendered file;
 - per-component acceptance verdict and evidence IDs;
-- exact supported Codex version tuple;
-- independent `PASSED` for that source/evidence package.
+- exact supported target-client versions;
+- independent PASSED review of that source/evidence package.
 
-The older safe skills inventory contains 135 file rows only. It has no closed
-component verdict/evidence/source-identity contract. The older DANIILPC
-acceptance explicitly marks canonical source freshness `FAIL/BLOCKER`; it also
-forbids treating the live home as rollout source.
+The full build repository is intentionally rejected as a package source when
+it is located inside Claude, Codex, shared-agent or OpenCode live homes. A raw
+clone into a client discovery path is not a substitute for target rendering.
 
-Therefore the synthetic fixture is never promoted, and no employee ZIP or
+Therefore the synthetic fixture is never promoted and no employee ZIP or
 sidecar is created.
 
 ## Remaining release gates
 
-1. Produce and independently approve an immutable rendered Codex-base source
-   plus frozen acceptance inventory.
-2. Build the real package twice, compare deterministic ZIP/SHA-256, and rerun
-   this acceptance runner against that payload.
-3. Obtain fresh independent read-only audit. The current permission explicitly
-   denies paid/model runtime, so this implementation session cannot claim it.
-4. Request separate exact permission for project package evidence.
-5. Request separate DANIILPC canary write permission.
-6. Only after a clean canary may a 1–2 employee pilot be considered.
+1. Freeze and independently approve one rendered source per target.
+2. Build each real package twice and compare deterministic ZIP/SHA-256.
+3. Rerun dual-shell acceptance against those exact payloads.
+4. Obtain fresh independent read-only audit.
+5. Request separate permission for one live-device canary.
+6. Compare real token usage on matched clean-chat prompts.
+7. Only then consider a small employee pilot.

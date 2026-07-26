@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://llmbase.local/contracts/foundation/acceptance-inventory.schema.json",
-  "title": "Codex Foundation acceptance inventory",
+  "title": "LLM Base Foundation acceptance inventory",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "source_identity": {
       "$ref": "release-manifest.schema.json#/$defs/source_identity"
@@ -25,8 +25,10 @@
         "release_id",
         "built_at_utc",
         "installer_protocol_version",
+        "target",
         "compatible",
-        "compatibility"
+        "compatibility",
+        "sync_policy"
       ],
       "properties": {
         "release_id": {
@@ -38,11 +40,21 @@
         "installer_protocol_version": {
           "type": "string"
         },
+        "target": {
+          "enum": [
+            "claude",
+            "codex",
+            "opencode"
+          ]
+        },
         "compatible": {
           "type": "boolean"
         },
         "compatibility": {
           "$ref": "release-manifest.schema.json#/$defs/compatibility"
+        },
+        "sync_policy": {
+          "$ref": "release-manifest.schema.json#/$defs/sync_policy"
         }
       }
     },
@@ -84,6 +96,9 @@
             "core",
             "agent",
             "skill",
+            "config",
+            "launcher",
+            "metadata",
             "hook",
             "mcp",
             "plugin"
@@ -169,4 +184,3 @@
     }
   }
 }
-

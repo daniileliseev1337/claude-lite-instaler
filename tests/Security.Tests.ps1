@@ -80,7 +80,7 @@ It 'rejects a stale package before opening a transaction' {
       Invoke-FoundationInstall $Plan
     }
     Assert-False (Test-Path -LiteralPath (
-      Get-FoundationStateRoot $Scenario.local_app_data
+      Get-FoundationStateRoot $Scenario.local_app_data $Scenario.environment.target
     ))
   } finally { Remove-TestRoot $Scenario.root }
 }
@@ -98,7 +98,7 @@ It 'rejects a stale destination before opening a transaction' {
     }
     Assert-Equal 'user-owned' ([IO.File]::ReadAllText($Foreign))
     Assert-False (Test-Path -LiteralPath (
-      Get-FoundationStateRoot $Scenario.local_app_data
+      Get-FoundationStateRoot $Scenario.local_app_data $Scenario.environment.target
     ))
   } finally { Remove-TestRoot $Scenario.root }
 }
@@ -200,7 +200,7 @@ It 'bundles without network or external-process commands' {
     foreach ($Forbidden in @(
         'Invoke-WebRequest', 'Invoke-RestMethod', 'Start-BitsTransfer',
         'Start-Process', 'Invoke-Expression', 'iex', 'git', 'curl', 'wget',
-        'codex'
+        'claude', 'codex', 'opencode'
       )) {
       Assert-False ($Commands -contains $Forbidden) "Forbidden command: $Forbidden"
     }

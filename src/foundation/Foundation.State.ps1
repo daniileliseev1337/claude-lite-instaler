@@ -6,9 +6,13 @@ function New-FoundationRandomId {
 }
 
 function Get-FoundationStateRoot {
-  param([Parameter(Mandatory = $true)][string]$LocalAppData)
+  param(
+    [Parameter(Mandatory = $true)][string]$LocalAppData,
+    [Parameter(Mandatory = $true)][string]$Target
+  )
+  Assert-FoundationTarget $Target
   $Base = [IO.Path]::GetFullPath($LocalAppData)
-  $Root = [IO.Path]::GetFullPath((Join-Path $Base 'LLMBase\codex-foundation'))
+  $Root = [IO.Path]::GetFullPath((Join-Path $Base "LLMBase\foundation\$Target"))
   if (-not $Root.StartsWith(
       $Base + [IO.Path]::DirectorySeparatorChar,
       [StringComparison]::OrdinalIgnoreCase)) {
@@ -18,10 +22,10 @@ function Get-FoundationStateRoot {
 }
 
 function Initialize-FoundationStateRoot {
-  param([string]$LocalAppData)
+  param([string]$LocalAppData, [string]$Target)
   $LocalRoot = [IO.Path]::GetFullPath($LocalAppData)
   Assert-SafeExistingDirectory $LocalRoot
-  $StateRoot = Get-FoundationStateRoot $LocalRoot
+  $StateRoot = Get-FoundationStateRoot $LocalRoot $Target
   New-FoundationSafeDirectory $StateRoot
   foreach ($Name in @('releases', 'backups', 'recovery', 'reports')) {
     New-FoundationSafeDirectory (Join-Path $StateRoot $Name)
@@ -30,9 +34,12 @@ function Initialize-FoundationStateRoot {
 }
 
 function Test-PendingFoundationJournal {
-  param([Parameter(Mandatory = $true)][string]$LocalAppData)
+  param(
+    [Parameter(Mandatory = $true)][string]$LocalAppData,
+    [Parameter(Mandatory = $true)][string]$Target
+  )
   return Test-Path -LiteralPath (
-    Join-Path (Get-FoundationStateRoot $LocalAppData) 'transaction-journal.json'
+    Join-Path (Get-FoundationStateRoot $LocalAppData $Target) 'transaction-journal.json'
   ) -PathType Leaf
 }
 
@@ -40,33 +47,40 @@ function Read-FoundationActiveState {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory = $true)][string]$LocalAppData,
+    [Parameter(Mandatory = $true)][string]$Target,
     [switch]$AllowMissing
   )
-  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData) 'state.json'
+  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData $Target) 'state.json'
   if (-not (Test-Path -LiteralPath $Path)) {
     if ($AllowMissing) { return $null }
     Throw-FoundationError -Code 'ACTIVE_DRIFT' -Message 'Foundation state is not installed'
   }
   $State = Read-JsonFileStrict $Path 8388608
   Assert-ExactProperties $State @(
-    'schema_version', 'release_id', 'manifest_sha256', 'compatibility',
+    'schema_version', 'release_id', 'target', 'install_role',
+    'manifest_sha256', 'compatibility', 'sync_policy',
     'active_components', 'active_files', 'quarantine_components',
     'rollback_snapshot_id', 'installed_at_utc'
   ) 'active state'
-  if ($State.schema_version -ne 1 -or
+  if ($State.schema_version -ne 2 -or $State.target -cne $Target -or
       $State.release_id -notmatch '^foundation-[a-z0-9][a-z0-9.-]{0,79}$' -or
       $State.manifest_sha256 -notmatch '^[0-9a-f]{64}$' -or
       $State.rollback_snapshot_id -notmatch '^[0-9a-f]{64}$') {
     Throw-FoundationError -Code 'ACTIVE_DRIFT' -Message 'Active state identity is invalid'
   }
-  Assert-ExactProperties $State.compatibility @('windows', 'powershell', 'codex_versions') 'state compatibility'
+  Assert-FoundationTarget ([string]$State.target)
+  Assert-FoundationInstallRole ([string]$State.install_role)
+  Assert-FoundationSyncPolicy $State.sync_policy
+  Assert-ExactProperties $State.compatibility @('windows', 'powershell', 'client_versions') 'state compatibility'
   $ComponentIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
   foreach ($Component in @($State.active_components)) {
     Assert-ExactProperties $Component @(
       'component_id', 'component_type', 'destination_relative_path', 'sha256', 'bytes'
     ) 'state component'
     if (-not $ComponentIds.Add([string]$Component.component_id) -or
-        @('core', 'agent', 'skill') -cnotcontains [string]$Component.component_type -or
+        @(
+          'core', 'agent', 'skill', 'config', 'launcher', 'metadata'
+        ) -cnotcontains [string]$Component.component_type -or
         $Component.sha256 -notmatch '^[0-9a-f]{64}$') {
       Throw-FoundationError -Code 'ACTIVE_DRIFT' -Message 'Invalid state component'
     }
@@ -92,8 +106,8 @@ function Read-FoundationActiveState {
 }
 
 function Read-FoundationJournal {
-  param([string]$LocalAppData)
-  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData) 'transaction-journal.json'
+  param([string]$LocalAppData, [string]$Target)
+  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData $Target) 'transaction-journal.json'
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     Throw-FoundationError -Code 'RECOVERY_REQUIRED' -Message 'Transaction journal is missing'
   }
@@ -141,7 +155,7 @@ function Open-FoundationTransaction {
   if ($Plan.blocked) {
     Throw-FoundationError -Code 'USER_CONFLICT' -Message 'Blocked plan cannot open a transaction'
   }
-  $StateRoot = Initialize-FoundationStateRoot $Plan.local_app_data
+  $StateRoot = Initialize-FoundationStateRoot $Plan.local_app_data $Plan.target
   $JournalPath = Join-Path $StateRoot 'transaction-journal.json'
   if (Test-Path -LiteralPath $JournalPath) {
     Throw-FoundationError -Code 'RECOVERY_REQUIRED' -Message 'A pending transaction already exists'
@@ -192,24 +206,49 @@ function Write-FoundationJournalStep {
 }
 
 function Write-FoundationActiveState {
-  param($State, [string]$LocalAppData)
-  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData) 'state.json'
+  param($State, [string]$LocalAppData, [string]$Target)
+  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData $Target) 'state.json'
   Write-FoundationJsonAtomic $State $Path
 }
 
 function Remove-FoundationActiveState {
-  param([string]$LocalAppData)
-  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData) 'state.json'
+  param([string]$LocalAppData, [string]$Target)
+  $Path = Join-Path (Get-FoundationStateRoot $LocalAppData $Target) 'state.json'
   if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
 }
 
 function Close-FoundationTransaction {
-  param($Context, [string]$Result)
+  param(
+    $Context,
+    [string]$Result,
+    [scriptblock]$FailureInjector = {}
+  )
   $Journal = $Context.journal
   $Journal.status = $Result
   $Archive = Join-Path $Context.state_root (
     "releases\$($Journal.release_id)-$($Journal.transaction_id)-$($Result.ToLowerInvariant()).json"
   )
-  Write-CanonicalFoundationJsonExclusive $Journal $Archive
-  Remove-Item -LiteralPath $Context.journal_path -Force
+  if (Test-Path -LiteralPath $Archive -PathType Leaf) {
+    $Existing = Read-JsonFileStrict $Archive 4194304
+    $ExpectedJson = ConvertTo-FoundationCanonicalJson $Journal
+    $ExistingJson = ConvertTo-FoundationCanonicalJson $Existing
+    if ($ExistingJson -cne $ExpectedJson) {
+      Throw-FoundationError -Code 'RECOVERY_REQUIRED' `
+        -Message 'Transaction archive conflicts with expected close record'
+    }
+  } else {
+    Write-CanonicalFoundationJsonExclusive $Journal $Archive
+  }
+  & $FailureInjector 'after-close-archive'
+  if (Test-Path -LiteralPath $Context.journal_path -PathType Leaf) {
+    $OpenJournal = Read-JsonFileStrict $Context.journal_path 4194304
+    if ($OpenJournal.transaction_id -cne $Journal.transaction_id -or
+        $OpenJournal.release_id -cne $Journal.release_id -or
+        $OpenJournal.snapshot_id -cne $Journal.snapshot_id -or
+        $OpenJournal.status -cne 'OPEN') {
+      Throw-FoundationError -Code 'RECOVERY_REQUIRED' `
+        -Message 'Open journal identity changed before close'
+    }
+    Remove-Item -LiteralPath $Context.journal_path -Force
+  }
 }

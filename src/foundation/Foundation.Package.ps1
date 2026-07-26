@@ -3,6 +3,103 @@ function ConvertTo-FoundationCanonicalJson {
   return (ConvertTo-Json $Value -Depth 100).Replace("`r`n", "`n") + "`n"
 }
 
+if (-not (Get-Variable FoundationPackageDefinitionRoot -Scope Script `
+    -ErrorAction SilentlyContinue)) {
+  $script:FoundationPackageDefinitionRoot = $PSScriptRoot
+}
+
+function Get-FoundationRenderedTargetMap {
+  $Path = Join-Path $script:FoundationPackageDefinitionRoot `
+    '..\..\contracts\foundation\rendered-target-map.json'
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    Throw-FoundationError -Code 'BLOCKED_APPROVED_FOUNDATION_SOURCE' `
+      -Message 'Rendered target map is unavailable to the package builder'
+  }
+  $Map = Read-JsonFileStrict $Path 1048576
+  Assert-ExactProperties $Map @('schema_version', 'targets') `
+    'rendered target map'
+  if ($Map.schema_version -ne 1 -or
+      @(Compare-Object @('claude', 'codex', 'opencode') @(
+        $Map.targets.PSObject.Properties.Name
+      )).Count -ne 0) {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' `
+      -Message 'Rendered target map identity differs'
+  }
+  foreach ($Target in @('claude', 'codex', 'opencode')) {
+    $Expected = @(Get-FoundationRenderedContractRows $Target)
+    $Properties = @($Map.targets.$Target.PSObject.Properties)
+    if ($Properties.Count -ne $Expected.Count) {
+      Throw-FoundationError -Code 'INVALID_PACKAGE' `
+        -Message "Rendered target map count differs: $Target"
+    }
+    foreach ($ExpectedRow in $Expected) {
+      $Property = @(
+        $Properties | Where-Object Name -CEQ `
+          $ExpectedRow.source_relative_path
+      )
+      if ($Property.Count -ne 1) {
+        Throw-FoundationError -Code 'INVALID_PACKAGE' `
+          -Message "Rendered target map path differs: $Target"
+      }
+      $Row = $Property[0].Value
+      Assert-ExactProperties $Row @(
+        'component_id', 'component_type', 'destination_relative_path'
+      ) 'rendered target row'
+      if ($Row.component_id -cne $ExpectedRow.component_id -or
+          $Row.component_type -cne $ExpectedRow.component_type -or
+          $Row.destination_relative_path -cne
+            $ExpectedRow.destination_relative_path) {
+        Throw-FoundationError -Code 'INVALID_PACKAGE' `
+          -Message "Rendered target map row differs: $Target"
+      }
+    }
+  }
+  return $Map
+}
+
+function Assert-FoundationSourceIdentityMatchesRoot {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourceRoot,
+    [Parameter(Mandatory = $true)]$Identity
+  )
+  Assert-FoundationSourceIdentity $Identity
+  $Digest = Get-FoundationPayloadDigest $SourceRoot
+  if ($Digest.sha256 -cne [string]$Identity.content_sha256) {
+    Throw-FoundationError -Code 'BLOCKED_APPROVED_FOUNDATION_SOURCE' `
+      -Message 'Declared source identity is not bound to source bytes'
+  }
+}
+
+function Assert-FoundationInventoryRenderedContract {
+  param(
+    [Parameter(Mandatory = $true)]$Classified,
+    [Parameter(Mandatory = $true)]$RenderedMap
+  )
+  $Target = [string]$Classified.environment.target
+  $Properties = @($RenderedMap.targets.$Target.PSObject.Properties)
+  $Active = @(
+    $Classified.components | Where-Object activation -CEQ 'ACTIVE_ELIGIBLE'
+  )
+  if ($Active.Count -ne $Properties.Count) {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' `
+      -Message 'Inventory active set differs from rendered target map'
+  }
+  foreach ($Property in $Properties) {
+    $Row = $Property.Value
+    $Matches = @(
+      $Active | Where-Object component_id -CEQ $Row.component_id
+    )
+    if ($Matches.Count -ne 1 -or
+        $Matches[0].source_relative_path -cne $Property.Name -or
+        $Matches[0].component_type -cne $Row.component_type -or
+        $Matches[0].destination_relative_path -cne
+          $Row.destination_relative_path) {
+      Throw-FoundationError -Code 'INVALID_PACKAGE' `
+        -Message "Inventory row differs from rendered map: $($Row.component_id)"
+    }
+  }
+}
+
 function Write-CanonicalFoundationJsonExclusive {
   param(
     [Parameter(Mandatory = $true)]$Value,
@@ -40,7 +137,11 @@ function Assert-ApprovedSourceRoot {
     Throw-FoundationError -Code 'BLOCKED_APPROVED_FOUNDATION_SOURCE' -Message 'Source root is not a safe directory'
   }
   $Segments = @($Item.FullName -split '[\\/]')
-  if (@($Segments | Where-Object { $_ -ieq '.codex' -or $_ -ieq '.claude' }).Count -gt 0) {
+  $HasOpenCodeHome = $Item.FullName -match '(?i)[\\/]\.config[\\/]opencode(?:[\\/]|$)'
+  if (@($Segments | Where-Object {
+        $_ -ieq '.codex' -or $_ -ieq '.claude' -or
+        $_ -ieq '.agents' -or $_ -ieq '.opencode'
+      }).Count -gt 0 -or $HasOpenCodeHome) {
     Throw-FoundationError -Code 'BLOCKED_APPROVED_FOUNDATION_SOURCE' -Message 'Live vendor home cannot be package source'
   }
   Assert-SafeExistingDirectory $Item.FullName
@@ -112,10 +213,14 @@ function Copy-FoundationPayloadExclusive {
 function Get-FoundationPackagePayloadPath {
   param($Component)
   $Bucket = if ($Component.activation -ceq 'ACTIVE_ELIGIBLE') { 'active' } else { 'quarantine' }
+  $DestinationExtension = [IO.Path]::GetExtension([string]$Component.destination_relative_path)
   switch ([string]$Component.component_type) {
-    'core' { return "$Bucket/core/AGENTS.md" }
-    'agent' { return "$Bucket/agents/$($Component.component_id).toml" }
+    'core' { return "$Bucket/core/$($Component.component_id)$DestinationExtension" }
+    'agent' { return "$Bucket/agents/$($Component.component_id)$DestinationExtension" }
     'skill' { return "$Bucket/skills/$($Component.component_id)" }
+    'config' { return "$Bucket/config/$($Component.component_id)$DestinationExtension" }
+    'launcher' { return "$Bucket/launchers/$($Component.component_id)$DestinationExtension" }
+    'metadata' { return "$Bucket/metadata/$($Component.component_id)$DestinationExtension" }
     'hook' { return "$Bucket/hooks/$($Component.component_id)" }
     'mcp' { return "$Bucket/mcp/$($Component.component_id)" }
     'plugin' { return "$Bucket/plugins/$($Component.component_id)" }
@@ -196,6 +301,7 @@ function Test-FoundationPackage {
     [Parameter(Mandatory = $true)]$Manifest
   )
   Test-FoundationManifest $Manifest
+  Assert-FoundationRenderedManifestContract $Manifest
   Assert-SafeExistingDirectory $PackageRoot
   $Expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
   $null = $Expected.Add('release-manifest.json')
@@ -255,6 +361,10 @@ function New-FoundationPackage {
   }
   $Inventory = Read-JsonFileStrict $InventoryPath 8388608
   $Classified = Resolve-FoundationInventory $Inventory
+  Assert-FoundationSourceIdentityMatchesRoot $SourceRoot `
+    $Classified.source_identity
+  $RenderedMap = Get-FoundationRenderedTargetMap
+  Assert-FoundationInventoryRenderedContract $Classified $RenderedMap
   foreach ($Component in @($Classified.components)) {
     $Source = Join-Path $SourceRoot (([string]$Component.source_relative_path).Replace('/', '\'))
     $Digest = Get-FoundationPayloadDigest $Source
@@ -265,8 +375,10 @@ function New-FoundationPackage {
 
   New-FoundationSafeDirectory $OutputRoot
   foreach ($Directory in @(
-    'active\core', 'active\agents', 'active\skills',
-    'quarantine\agents', 'quarantine\skills', 'quarantine\hooks',
+    'active\core', 'active\agents', 'active\skills', 'active\config',
+    'active\launchers', 'active\metadata',
+    'quarantine\agents', 'quarantine\skills', 'quarantine\config',
+    'quarantine\launchers', 'quarantine\metadata', 'quarantine\hooks',
     'quarantine\mcp', 'quarantine\plugins', 'docs'
   )) {
     New-FoundationSafeDirectory (Join-Path $OutputRoot $Directory)
@@ -308,14 +420,16 @@ function New-FoundationPackage {
   $ManifestComponents = @(Sort-FoundationObjectsOrdinal $ManifestComponents component_id)
   $Files = Get-FoundationPackageFileRows $OutputRoot $ManifestComponents
   $Manifest = [pscustomobject][ordered]@{
-    schema_version = 1
+    schema_version = 2
     release_id = $Classified.environment.release_id
     channel = 'foundation-canary'
     built_at_utc = $Classified.environment.built_at_utc
-    vendor = 'codex'
+    vendor = 'llm-base'
+    target = $Classified.environment.target
     source_identity = $Classified.source_identity
     installer_protocol_version = $Classified.environment.installer_protocol_version
     compatibility = $Classified.environment.compatibility
+    sync_policy = $Classified.environment.sync_policy
     files = $Files
     components = $ManifestComponents
     counts = [pscustomobject][ordered]@{

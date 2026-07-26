@@ -1,0 +1,1 @@
+fixture opencode rules

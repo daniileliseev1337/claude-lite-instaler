@@ -1,13 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "release_id": "foundation-fixture-0001",
   "channel": "foundation-canary",
   "built_at_utc": "2026-07-23T00:00:00Z",
-  "vendor": "codex",
+  "vendor": "llm-base",
+  "target": "codex",
   "source_identity": {
     "kind": "git",
     "commit": "1111111111111111111111111111111111111111",
-    "tree": "2222222222222222222222222222222222222222"
+    "tree": "2222222222222222222222222222222222222222",
+    "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   },
   "installer_protocol_version": "1.0.0",
   "compatibility": {
@@ -19,9 +21,17 @@
       "5.1",
       "7"
     ],
-    "codex_versions": [
+    "client_versions": [
       "0.145.0-alpha.18"
     ]
+  },
+  "sync_policy": {
+    "direction": "hub-to-consumer",
+    "default_role": "consumer",
+    "consumer_push": false,
+    "consumer_feedback_upload": false,
+    "consumer_session_upload": false,
+    "credentials_included": false
   },
   "files": [],
   "components": [],
@@ -33,4 +43,3 @@
   },
   "full_release_verdict": "NOT_PASS"
 }
-

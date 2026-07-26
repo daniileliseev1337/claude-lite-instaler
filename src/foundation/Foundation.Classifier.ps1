@@ -9,7 +9,7 @@ function Resolve-FoundationActivation {
   if ($Component.acceptance_verdict -cne 'PASS' -or @($Component.evidence_ids).Count -eq 0) {
     return 'QUARANTINE_NOT_TESTED'
   }
-  if (@('core', 'agent', 'skill') -cnotcontains [string]$Component.component_type) {
+  if (@('core', 'agent', 'skill', 'config', 'launcher', 'metadata') -cnotcontains [string]$Component.component_type) {
     return 'QUARANTINE_UNSUPPORTED_ACTIVATION'
   }
   if (-not [bool]$Environment.compatible -or -not [bool]$Component.compatible) {
@@ -41,12 +41,13 @@ function Test-AcceptanceInventory {
   Assert-ExactProperties $Inventory @(
     'schema_version', 'source_identity', 'environment', 'components', 'evidence'
   ) 'acceptance inventory'
-  if ($Inventory.schema_version -ne 1) {
+  if ($Inventory.schema_version -ne 2) {
     Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Acceptance schema version differs'
   }
   $SourceKey = Get-FoundationSourceIdentityKey $Inventory.source_identity
   Assert-ExactProperties $Inventory.environment @(
-    'release_id', 'built_at_utc', 'installer_protocol_version', 'compatible', 'compatibility'
+    'release_id', 'built_at_utc', 'installer_protocol_version', 'target',
+    'compatible', 'compatibility', 'sync_policy'
   ) 'acceptance environment'
   if ($Inventory.environment.release_id -notmatch '^foundation-[a-z0-9][a-z0-9.-]{0,79}$' -or
       $Inventory.environment.built_at_utc -notmatch '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' -or
@@ -54,18 +55,28 @@ function Test-AcceptanceInventory {
       $Inventory.environment.compatible -isnot [bool]) {
     Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'Invalid acceptance environment'
   }
+  Assert-FoundationTarget ([string]$Inventory.environment.target)
+  Assert-FoundationSyncPolicy $Inventory.environment.sync_policy
   Assert-ExactProperties $Inventory.environment.compatibility @(
-    'windows', 'powershell', 'codex_versions'
+    'windows', 'powershell', 'client_versions'
   ) 'acceptance compatibility'
   Assert-FoundationStringArray @($Inventory.environment.compatibility.windows) `
     'acceptance compatibility.windows' -Allowed @('10', '11')
   Assert-FoundationStringArray @($Inventory.environment.compatibility.powershell) `
     'acceptance compatibility.powershell' -Allowed @('5.1', '7')
-  Assert-FoundationStringArray @($Inventory.environment.compatibility.codex_versions) `
-    'acceptance compatibility.codex_versions'
+  Assert-FoundationStringArray @($Inventory.environment.compatibility.client_versions) `
+    'acceptance compatibility.client_versions'
 
   $Components = @{}
   $CaseIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $RenderedSources = [Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::Ordinal
+  )
+  foreach ($Row in @(
+      Get-FoundationRenderedContractRows ([string]$Inventory.environment.target)
+    )) {
+    $null = $RenderedSources.Add([string]$Row.source_relative_path)
+  }
   $Previous = $null
   foreach ($Component in @($Inventory.components)) {
     Assert-ExactProperties $Component @(
@@ -77,10 +88,18 @@ function Test-AcceptanceInventory {
         -not $CaseIds.Add([string]$Component.component_id) -or
         ($null -ne $Previous -and
           [StringComparer]::Ordinal.Compare($Previous, [string]$Component.component_id) -ge 0) -or
-        @('core', 'agent', 'skill', 'hook', 'mcp', 'plugin') -cnotcontains [string]$Component.component_type -or
+        @(
+          'core', 'agent', 'skill', 'config', 'launcher', 'metadata',
+          'hook', 'mcp', 'plugin'
+        ) -cnotcontains [string]$Component.component_type -or
         @('PASS', 'NOT_TESTED', 'BLOCKED', 'FAIL') -cnotcontains [string]$Component.acceptance_verdict -or
         -not (Test-PortableRelativePath ([string]$Component.source_relative_path)) -or
-        -not ([string]$Component.source_relative_path).StartsWith('components/', [StringComparison]::Ordinal) -or
+        (-not ([string]$Component.source_relative_path).StartsWith(
+            'components/', [StringComparison]::Ordinal
+          ) -and
+          -not $RenderedSources.Contains(
+            [string]$Component.source_relative_path
+          )) -or
         $Component.sha256 -notmatch '^[0-9a-f]{64}$' -or
         ($Component.bytes -isnot [int] -and $Component.bytes -isnot [long]) -or
         [int64]$Component.bytes -lt 0 -or $Component.compatible -isnot [bool]) {

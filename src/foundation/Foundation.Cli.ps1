@@ -1,7 +1,9 @@
 function Write-FoundationPlanConsole {
   param($Plan)
-  Write-Host "Codex Foundation plan"
+  Write-Host "LLM Base Foundation plan"
   Write-Host "Release: $($Plan.release_id)"
+  Write-Host "Target: $($Plan.target) | role: $($Plan.install_role)"
+  Write-Host "Sync: $($Plan.sync_policy.direction)"
   Write-Host "Blocked: $($Plan.blocked)"
   foreach ($Row in @($Plan.rows)) {
     $Destination = if ($null -eq $Row.destination) { '-' } else { $Row.destination }
@@ -9,6 +11,74 @@ function Write-FoundationPlanConsole {
   }
   foreach ($Blocker in @($Plan.blockers)) {
     Write-Host "BLOCKER $($Blocker.code) $($Blocker.component_id) $($Blocker.message)"
+  }
+}
+
+function Read-FoundationCliRequest {
+  param(
+    [AllowEmptyCollection()][string[]]$CliArgs,
+    [Parameter(Mandatory = $true)]$Environment
+  )
+  $Command = if (@($CliArgs).Count) {
+    $CliArgs[0].ToLowerInvariant()
+  } else {
+    'plan'
+  }
+  $Target = [string]$Environment.target
+  $Role = if ([string]::IsNullOrWhiteSpace([string]$Environment.install_role)) {
+    'consumer'
+  } else {
+    [string]$Environment.install_role
+  }
+  $ExportPath = $null
+  $SeenOptions = [Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::Ordinal
+  )
+  for ($Index = 1; $Index -lt @($CliArgs).Count; $Index++) {
+    $Option = [string]$CliArgs[$Index]
+    if ($Option -cin @('-Target', '-Role', '-ExportReport')) {
+      if (-not $SeenOptions.Add($Option)) {
+        Throw-FoundationError -Code 'INVALID_PACKAGE' `
+          -Message "Duplicate option: $Option"
+      }
+      if ($Index + 1 -ge $CliArgs.Count) {
+        Throw-FoundationError -Code 'INVALID_PACKAGE' -Message "Missing value for $Option"
+      }
+      $Value = [string]$CliArgs[$Index + 1]
+      $Index++
+      switch -CaseSensitive ($Option) {
+        '-Target' { $Target = $Value.ToLowerInvariant() }
+        '-Role' { $Role = $Value.ToLowerInvariant() }
+        '-ExportReport' {
+          if ($Command -cne 'doctor') {
+            Throw-FoundationError -Code 'INVALID_PACKAGE' -Message '-ExportReport is doctor-only'
+          }
+          $ExportPath = $Value
+        }
+      }
+    } else {
+      Throw-FoundationError -Code 'INVALID_PACKAGE' -Message "Unknown option: $Option"
+    }
+  }
+  Assert-FoundationTarget $Target
+  Assert-FoundationInstallRole $Role
+  return [pscustomobject][ordered]@{
+    command = $Command
+    target = $Target
+    install_role = $Role
+    export_report = $ExportPath
+  }
+}
+
+function New-FoundationCliEnvironment {
+  param($Environment, $Request)
+  return [pscustomobject][ordered]@{
+    target = $Request.target
+    install_role = $Request.install_role
+    windows = [string]$Environment.windows
+    powershell = [string]$Environment.powershell
+    client_version = [string]$Environment.client_version
+    client_detected = [bool]$Environment.client_detected
   }
 }
 
@@ -26,7 +96,7 @@ function Invoke-ConfirmedFoundationInstall {
     $Code = [string]$Plan.blockers[0].code
     return Get-FoundationExitCode $Code
   }
-  $Expected = "INSTALL $($Plan.release_id)"
+  $Expected = "INSTALL $($Plan.release_id) $($Plan.target) $($Plan.install_role)"
   $Prompt = "Type exactly '$Expected' to install"
   $Answer = & $ReadConfirmation $Prompt
   if ([string]$Answer -cne $Expected) {
@@ -36,7 +106,10 @@ function Invoke-ConfirmedFoundationInstall {
   $Result = Invoke-FoundationInstall $Plan
   $Doctor = Invoke-FoundationDoctor $UserProfile $LocalAppData $null $Environment
   if (-not $Doctor.healthy) { return 30 }
-  Write-Host "Installed: $($Result.installed) | release: $($Result.release_id)"
+  Write-Host (
+    "Installed: $($Result.installed) | release: $($Result.release_id) | " +
+    "target: $($Plan.target) | role: $($Plan.install_role)"
+  )
   return 0
 }
 
@@ -44,21 +117,15 @@ function Invoke-FoundationDoctorCli {
   param(
     [string]$UserProfile,
     [string]$LocalAppData,
-    [string[]]$CliArgs,
+    $Request,
     $Environment
   )
-  $ExportPath = $null
-  for ($Index = 1; $Index -lt $CliArgs.Count; $Index++) {
-    if ($CliArgs[$Index] -ceq '-ExportReport') {
-      if ($Index + 1 -ge $CliArgs.Count) { return 2 }
-      $ExportPath = $CliArgs[$Index + 1]
-      $Index++
-    } else {
-      return 2
-    }
-  }
-  $Doctor = Invoke-FoundationDoctor $UserProfile $LocalAppData $ExportPath $Environment
-  Write-Host "Doctor: $($Doctor.status) | release: $($Doctor.release_id)"
+  $Doctor = Invoke-FoundationDoctor $UserProfile $LocalAppData `
+    $Request.export_report $Environment
+  Write-Host (
+    "Doctor: $($Doctor.status) | release: $($Doctor.release_id) | " +
+    "target: $($Request.target)"
+  )
   foreach ($Code in @($Doctor.error_codes)) { Write-Host "ERROR $Code" }
   if ($Doctor.healthy) { return 0 }
   if (@($Doctor.error_codes) -contains 'RECOVERY_REQUIRED') { return 20 }
@@ -68,9 +135,19 @@ function Invoke-FoundationDoctorCli {
 }
 
 function Invoke-FoundationInventoryCli {
-  param([string]$PackageRoot, [string]$UserProfile, [string]$LocalAppData)
+  param(
+    [string]$PackageRoot,
+    [string]$UserProfile,
+    [string]$LocalAppData,
+    [string]$Target
+  )
+  $Manifest = Read-FoundationManifest (Join-Path $PackageRoot 'release-manifest.json')
+  if ($Manifest.target -cne $Target) {
+    Throw-FoundationError -Code 'INVALID_PACKAGE' -Message 'CLI target differs from package target'
+  }
   $Inventory = Invoke-FoundationInventory $PackageRoot $UserProfile $LocalAppData
   Write-Host "Package release: $($Inventory.release_id)"
+  Write-Host "Target: $($Inventory.target)"
   Write-Host "Installed release: $($Inventory.installed_release_id)"
   foreach ($Row in @($Inventory.components)) {
     Write-Host ("{0,-18} {1,-40} {2}" -f $Row.component_type, $Row.component_id, $Row.health)
@@ -87,36 +164,42 @@ function Invoke-FoundationCli {
     [Parameter(Mandatory = $true)]$Environment,
     [scriptblock]$ReadConfirmation = { param($Prompt) Read-Host $Prompt }
   )
-  $Command = if (@($CliArgs).Count) { $CliArgs[0].ToLowerInvariant() } else { 'plan' }
   try {
-    switch ($Command) {
+    $Request = Read-FoundationCliRequest $CliArgs $Environment
+    $EffectiveEnvironment = New-FoundationCliEnvironment $Environment $Request
+    switch ($Request.command) {
       'plan' {
-        if (@($CliArgs).Count -gt 1) { return 2 }
-        $Plan = New-FoundationPlan $PackageRoot $UserProfile $LocalAppData $Environment
+        $Plan = New-FoundationPlan $PackageRoot $UserProfile $LocalAppData `
+          $EffectiveEnvironment
         Write-FoundationPlanConsole $Plan
-        if ($Plan.blocked) { return Get-FoundationExitCode ([string]$Plan.blockers[0].code) }
+        if ($Plan.blocked) {
+          return Get-FoundationExitCode ([string]$Plan.blockers[0].code)
+        }
         return 0
       }
       'install' {
-        if (@($CliArgs).Count -gt 1) { return 2 }
         return Invoke-ConfirmedFoundationInstall $PackageRoot $UserProfile `
-          $LocalAppData $Environment $ReadConfirmation
+          $LocalAppData $EffectiveEnvironment $ReadConfirmation
       }
       'doctor' {
-        return Invoke-FoundationDoctorCli $UserProfile $LocalAppData $CliArgs $Environment
+        return Invoke-FoundationDoctorCli $UserProfile $LocalAppData $Request `
+          $EffectiveEnvironment
       }
       'inventory' {
-        if (@($CliArgs).Count -gt 1) { return 2 }
-        return Invoke-FoundationInventoryCli $PackageRoot $UserProfile $LocalAppData
+        return Invoke-FoundationInventoryCli $PackageRoot $UserProfile `
+          $LocalAppData $Request.target
       }
       'rollback' {
-        if (@($CliArgs).Count -gt 1) { return 2 }
-        $Result = Invoke-FoundationRollback $UserProfile $LocalAppData
+        $Result = Invoke-FoundationRollback $UserProfile $LocalAppData `
+          $Request.target
         Write-Host "Rollback complete | active release: $($Result.release_id)"
         return 0
       }
       default {
-        [Console]::Error.WriteLine('Usage: install.ps1 plan|install|doctor|inventory|rollback')
+        [Console]::Error.WriteLine(
+          'Usage: install.ps1 plan|install|doctor|inventory|rollback ' +
+          '[-Target claude|codex|opencode] [-Role consumer|hub]'
+        )
         return 2
       }
     }

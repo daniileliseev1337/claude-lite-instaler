@@ -7,7 +7,7 @@ It 'reports a healthy installed release with expected quarantine' {
     $Doctor = Invoke-FoundationDoctor $Scenario.user_profile $Scenario.local_app_data $null `
       $Scenario.environment
     Assert-True $Doctor.healthy
-    Assert-Equal 1 $Doctor.quarantine_counts.total
+    Assert-Equal 2 $Doctor.quarantine_counts.total
     Assert-Equal @() @($Doctor.error_codes)
   } finally { Remove-TestRoot $Scenario.root }
 }
@@ -50,4 +50,3 @@ It 'exports a bounded safe report without seeded secret strings' {
     ) @($Report.PSObject.Properties.Name | Sort-Object)
   } finally { Remove-TestRoot $Scenario.root }
 }
-

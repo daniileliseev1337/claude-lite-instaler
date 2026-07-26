@@ -14,7 +14,8 @@ function Assert-PlanStillCurrent {
 
 function Save-FoundationSnapshot {
   param($Context, [object[]]$FileOperations)
-  $PriorState = Read-FoundationActiveState $Context.plan.local_app_data -AllowMissing
+  $PriorState = Read-FoundationActiveState $Context.plan.local_app_data `
+    $Context.plan.target -AllowMissing
   $Rows = @()
   $BackupFilesRoot = Join-Path $Context.snapshot_root 'files'
   New-FoundationSafeDirectory $BackupFilesRoot
@@ -195,10 +196,13 @@ function New-FoundationActiveStateFromPlan {
     }
   )
   return [pscustomobject][ordered]@{
-    schema_version = 1
+    schema_version = 2
     release_id = $Plan.release_id
+    target = $Plan.target
+    install_role = $Plan.install_role
     manifest_sha256 = $Plan.manifest_sha256
     compatibility = $Manifest.compatibility
+    sync_policy = $Manifest.sync_policy
     active_components = $ActiveComponents
     active_files = $ActiveFiles
     quarantine_components = $Quarantine
@@ -238,8 +242,9 @@ function Invoke-FoundationInstall {
       $Ordinal++
       $Staged = Write-FoundationStagingFile $Context $Row $Row.payload_path
       & $FailureInjector "after-stage-$Ordinal"
-      Install-FoundationStagedFile $Context $Row $Staged
       Write-FoundationJournalStep $Context "replace-$Ordinal" $Row
+      & $FailureInjector "after-intent-$Ordinal"
+      Install-FoundationStagedFile $Context $Row $Staged
       & $FailureInjector "after-replace-$Ordinal"
     }
     & $FailureInjector 'before-doctor'
@@ -250,10 +255,10 @@ function Invoke-FoundationInstall {
     & $FailureInjector 'after-doctor'
     & $FailureInjector 'before-state'
     $State = New-FoundationActiveStateFromPlan $Context
-    Write-FoundationActiveState $State $Plan.local_app_data
+    Write-FoundationActiveState $State $Plan.local_app_data $Plan.target
     & $FailureInjector 'after-state'
     & $FailureInjector 'before-close'
-    Close-FoundationTransaction $Context 'COMMITTED'
+    Close-FoundationTransaction $Context 'COMMITTED' $FailureInjector
     return [pscustomobject]@{
       release_id = $Plan.release_id
       installed = $true

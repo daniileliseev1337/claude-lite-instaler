@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://llmbase.local/contracts/foundation/release-manifest.schema.json",
-  "title": "Codex Foundation release manifest",
+  "title": "LLM Base Foundation release manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -10,9 +10,11 @@
     "channel",
     "built_at_utc",
     "vendor",
+    "target",
     "source_identity",
     "installer_protocol_version",
     "compatibility",
+    "sync_policy",
     "files",
     "components",
     "counts",
@@ -20,7 +22,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "release_id": {
       "type": "string",
@@ -34,7 +36,14 @@
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
     },
     "vendor": {
-      "const": "codex"
+      "const": "llm-base"
+    },
+    "target": {
+      "enum": [
+        "claude",
+        "codex",
+        "opencode"
+      ]
     },
     "source_identity": {
       "$ref": "#/$defs/source_identity"
@@ -45,6 +54,9 @@
     },
     "compatibility": {
       "$ref": "#/$defs/compatibility"
+    },
+    "sync_policy": {
+      "$ref": "#/$defs/sync_policy"
     },
     "files": {
       "type": "array",
@@ -88,7 +100,8 @@
           "required": [
             "kind",
             "commit",
-            "tree"
+            "tree",
+            "content_sha256"
           ],
           "properties": {
             "kind": {
@@ -99,6 +112,9 @@
             },
             "tree": {
               "$ref": "#/$defs/git_id"
+            },
+            "content_sha256": {
+              "$ref": "#/$defs/sha256"
             }
           }
         },
@@ -126,7 +142,7 @@
       "required": [
         "windows",
         "powershell",
-        "codex_versions"
+        "client_versions"
       ],
       "properties": {
         "windows": {
@@ -151,7 +167,7 @@
             ]
           }
         },
-        "codex_versions": {
+        "client_versions": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
@@ -159,6 +175,38 @@
             "type": "string",
             "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
           }
+        }
+      }
+    },
+    "sync_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "direction",
+        "default_role",
+        "consumer_push",
+        "consumer_feedback_upload",
+        "consumer_session_upload",
+        "credentials_included"
+      ],
+      "properties": {
+        "direction": {
+          "const": "hub-to-consumer"
+        },
+        "default_role": {
+          "const": "consumer"
+        },
+        "consumer_push": {
+          "const": false
+        },
+        "consumer_feedback_upload": {
+          "const": false
+        },
+        "consumer_session_upload": {
+          "const": false
+        },
+        "credentials_included": {
+          "const": false
         }
       }
     },
@@ -226,6 +274,9 @@
             "core",
             "agent",
             "skill",
+            "config",
+            "launcher",
+            "metadata",
             "hook",
             "mcp",
             "plugin"
@@ -326,4 +377,3 @@
     }
   }
 }
-

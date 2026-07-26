@@ -23,7 +23,7 @@ $Order = @(
 $FunctionNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $Builder = [Text.StringBuilder]::new()
 $null = $Builder.AppendLine('# generated-by: tools/bundle-installer.ps1')
-$null = $Builder.AppendLine('# Codex Foundation Mini-Installer · offline/current-user')
+$null = $Builder.AppendLine('# LLM Base Foundation Installer · offline/current-user')
 $null = $Builder.AppendLine('$ErrorActionPreference = ''Stop''')
 $null = $Builder.AppendLine()
 foreach ($Name in $Order) {
@@ -83,7 +83,7 @@ $Ast = [Management.Automation.Language.Parser]::ParseFile(
 if (@($Errors).Count -gt 0) { throw 'Generated installer parse failed' }
 $Forbidden = @(
   'Invoke-WebRequest','Invoke-RestMethod','Start-BitsTransfer',
-  'Start-Process','git','curl','wget','codex'
+  'Start-Process','git','curl','wget','claude','codex','opencode'
 )
 $Commands = @(
   $Ast.FindAll({
@@ -99,4 +99,3 @@ Write-Output ([pscustomobject]@{
   sha256 = (Get-FileHash -LiteralPath $AbsoluteOutput -Algorithm SHA256).Hash.ToLowerInvariant()
   bytes = $Bytes.Length
 })
-
