@@ -2,7 +2,7 @@
 
 Лёгкий установщик для **Claude Code** на Windows + PowerShell, без прав
 администратора. Ставит ту же связку, что у автора базы, и подключает
-`~/.claude/` к общей базе [`claude-base`](https://github.com/daniileliseev1337/claude-base)
+`~/.claude/` к общей базе [`claude-base`](https://github.com/K7-LS/claude-base)
 через git.
 
 ## Что ставит — 8 стадий
@@ -20,7 +20,7 @@
 
 ## Что устанавливает Stage 7 в `~/.claude/`
 
-Из репо [`claude-base`](https://github.com/daniileliseev1337/claude-base):
+Из репо [`claude-base`](https://github.com/K7-LS/claude-base):
 
 - **`CLAUDE.md`** — глобальный manifest с CORE / USER EXTENSIONS секциями, STOP-процедурой, MCP-роутингом, скилл-роутингом, harvest-workflow.
 - **`agents/`** — `designer` (доменный для проектирования), `auditor` (общий ревьюер), `word-checker` / `excel-validator` / `pdf-reviewer` (узкие read-only ревьюеры).
@@ -211,8 +211,8 @@ claude-lite-instaler/
 
 ## Связанные репо
 
-- [`claude-base`](https://github.com/daniileliseev1337/claude-base) — общая база, которая клонируется в `~/.claude/`.
-- [`claude-base-feedback`](https://github.com/daniileliseev1337/claude-base-feedback) — private репо для feedback от сотрудников (push через `feedback-collector.ps1` на consumer-ПК, pull через `pull-feedback.ps1` на developer-ПК).
+- [`claude-base`](https://github.com/K7-LS/claude-base) — общая база, которая клонируется в `~/.claude/`.
+- [`claude-base-feedback`](https://github.com/K7-LS/claude-base-feedback) — private репо для feedback от сотрудников (push через `feedback-collector.ps1` на consumer-ПК, pull через `pull-feedback.ps1` на developer-ПК).
 
 ## История
 

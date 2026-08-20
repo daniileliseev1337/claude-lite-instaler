@@ -52,7 +52,7 @@ Test-Path "$env:USERPROFILE\.claude"   # должно быть False
 
 **Ожидание:**
 - Сообщение «`~/.claude/ не существует — клонирую claude-base...`»
-- `git clone https://github.com/daniileliseev1337/claude-base.git ~/.claude/`
+- `git clone https://github.com/K7-LS/claude-base.git ~/.claude/`
 - Сообщение «`✓ claude-base склонирован в ...`»
 
 **Проверка PASS:**
@@ -65,7 +65,7 @@ Test-Path "$env:USERPROFILE\.claude\.git"               # True
 
 # 3. Remote корректный
 git -C "$env:USERPROFILE\.claude" remote -v
-# должно показать: origin https://github.com/daniileliseev1337/claude-base.git
+# должно показать: origin https://github.com/K7-LS/claude-base.git
 
 # 4. Все ожидаемые папки на месте
 Get-ChildItem "$env:USERPROFILE\.claude" -Directory | Select-Object Name
@@ -164,7 +164,7 @@ git -C "$env:USERPROFILE\.claude" remote -v
 
 **Cleanup перед Case 4:**
 ```powershell
-git -C "$env:USERPROFILE\.claude" remote set-url origin https://github.com/daniileliseev1337/claude-base.git
+git -C "$env:USERPROFILE\.claude" remote set-url origin https://github.com/K7-LS/claude-base.git
 ```
 
 **FAIL-сигналы:**
