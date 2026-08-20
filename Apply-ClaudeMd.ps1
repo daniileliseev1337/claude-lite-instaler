@@ -22,7 +22,7 @@ CASE 4 -- ~/.claude/ exists but is NOT a git repo:
     Requires user confirmation (or -Yes flag).
 
 .PARAMETER BaseRepo
-URL of the claude-base git repository. Defaults to public daniileliseev1337 repo.
+URL of the claude-base git repository. Defaults to public K7-LS repo.
 
 .PARAMETER Yes
 Skip confirmation prompt for migration (CASE 4) -- for CI / non-interactive use.
@@ -34,7 +34,7 @@ ASCII-only Write-Host messages to avoid Windows PowerShell 5.1 codepage issues.
 
 [CmdletBinding()]
 param(
-    [string]$BaseRepo = 'https://github.com/daniileliseev1337/claude-base.git',
+    [string]$BaseRepo = 'https://github.com/K7-LS/claude-base.git',
     [switch]$Yes
 )
 

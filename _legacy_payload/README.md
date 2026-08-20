@@ -7,7 +7,7 @@
 
 С переходом на git-clone-стратегию (Stage 7 в `Apply-ClaudeMd.ps1`)
 актуальные skills и agents живут в репо
-[`claude-base`](https://github.com/daniileliseev1337/claude-base) и
+[`claude-base`](https://github.com/K7-LS/claude-base) и
 устанавливаются через `git clone` в `~/.claude/`.
 
 ## Зачем хранится
